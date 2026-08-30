@@ -4,7 +4,7 @@ version: '3'
 tasks:
   bootstrap:
     desc: Install BMAD + beads and wire the bridge (idempotent)
-    cmds: [bash scripts/bootstrap.sh {{.CLI_ARGS}}]
+    cmds: ['bash scripts/bootstrap.sh {{.CLI_ARGS}}']
 
   status:
     desc: Stories × (sprint-status, beads, ready, assignee)
@@ -16,11 +16,11 @@ tasks:
 
   import:
     desc: epics.md → beads (idempotent)
-    cmds: [uv run --quiet scripts/bmad_beads.py import {{.CLI_ARGS}}]
+    cmds: ['uv run --quiet scripts/bmad_beads.py import {{.CLI_ARGS}}']
 
   sync:
     desc: sprint-status.yaml ↔ beads
-    cmds: [uv run --quiet scripts/bmad_beads.py sync {{.CLI_ARGS}}]
+    cmds: ['uv run --quiet scripts/bmad_beads.py sync {{.CLI_ARGS}}']
 
   doctor:
     desc: Preconditions + drift between BMAD and beads
