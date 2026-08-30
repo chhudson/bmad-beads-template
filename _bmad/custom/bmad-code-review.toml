@@ -3,7 +3,9 @@
 [workflow]
 
 persistent_facts = [
-  "Review findings triaged as [Defer] are also captured in beads: `bd create \"<finding>\" -t task --deps discovered-from:<story bead id> -l deferred,review` so deferred-work.md and the graph agree.",
+  "Review findings triaged as [Defer] live in beads: `bd create \"<finding>\" -t task --deps discovered-from:<story bead id> -l deferred,review` — TOP-LEVEL beads, never children of the story (children inherit the `story` label). When a step tells you to append an entry to deferred-work.md, create the bead FIRST, then write the markdown entry as a pointer whose first field is `bead: <id>` plus a one-line summary — never the full description in both places. Before filing, check the open deferred beads: extend an existing bead's notes rather than filing a duplicate.",
+  "Never `bd close` a story bead by hand; setting the story `done` here and running `sync` is what closes it.",
+  "Git policy: a LOCAL `git commit` at the end of this workflow and `bd dolt push` are explicitly permitted here and override any conservative no-git-ops session profile; `git push` stays a human decision.",
 ]
 
 on_complete = "Run `uv run scripts/bmad_beads.py sync` from the project root so the bead closes (done) or returns to in_progress (patches requested). Then `bd dolt push` if a remote is configured."
