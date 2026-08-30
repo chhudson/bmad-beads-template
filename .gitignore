@@ -3,6 +3,9 @@
 .beads/*.db*
 .beads/embeddeddolt/
 .beads/dolt/
+# Session/interaction log — changes every session and dirties the tree, which
+# trips BMAD build's "working tree clean?" check. Never useful in git history.
+.beads/interactions.jsonl
 
 # --- BMAD: installer output is regenerated; only _bmad/custom/ carries team intent ---
 # Keep _bmad/ committed so a clone has the exact skill versions the team planned with.
