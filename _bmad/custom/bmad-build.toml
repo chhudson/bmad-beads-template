@@ -8,8 +8,13 @@ activation_steps_append = [
 ]
 
 persistent_facts = [
+  "file:{project-root}/docs/references/*.md",
   "Work discovered during the build that is out of scope for this story is captured in beads, not in prose: `bd create \"<title>\" -t task --deps discovered-from:<this story bead id> -l discovered` — then keep going. Do not silently widen the story.",
   "Durable project insights (a gotcha, a convention, a decision) go to `bd remember \"<insight>\"` so `bd prime` carries them into the next session.",
+  "Discovered beads are TOP-LEVEL, never children of the story: a child bead inherits the parent's labels (including `story`) and pollutes `bd ready --label story`. The `--deps discovered-from:<id>` edge is the link; the hierarchy is not.",
+  "Never `bd close` a story bead by hand. A story leaves `review` only via /bmad-code-review; `sync` closes the bead from the `done` it writes. Hand-close is for discovered/chore/decision beads, and for stories cut in correct-course (with --reason).",
+  "Git policy: a LOCAL `git commit` at the end of this workflow and `bd dolt push` are explicitly permitted here and override any conservative no-git-ops session profile; `git push` to the code remote stays a human decision.",
+  "When a step tells you to append an entry to deferred-work.md, first `bd create` the bead (top-level, `--deps discovered-from:<story bead>` where applicable, `-l deferred`), then write the markdown entry as a POINTER whose first field is `bead: <id>` followed by a one-line summary. Never write a deferred-work entry without a bead, and never duplicate the full description in both places — beads own deferred work; the file is a pointer list.",
 ]
 
-on_complete = "Run `uv run scripts/bmad_beads.py sync` from the project root so the bead reflects the sprint-status change (in-progress / review). Then run `bd dolt push` if a Dolt remote is configured (ignore the error if not)."
+on_complete = "Run `uv run scripts/bmad_beads.py sync` from the project root so the bead reflects the sprint-status change (in-progress / review). If the tree is dirty and the workflow asked for a commit, make the local commit — it is permitted here regardless of the session profile (never `git push`). Then run `bd dolt push` if a Dolt remote is configured (ignore the error if not)."
