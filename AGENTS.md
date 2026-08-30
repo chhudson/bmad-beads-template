@@ -18,22 +18,35 @@ context). One owner per fact. Read this before touching either.
 | Durable project insights | **beads** (`bd remember`) | injected by `bd prime` each session |
 
 Never set `ready-for-dev` by hand. Never edit `.beads/` files directly. Never `bd edit`.
+**Never `bd close` a story bead by hand** — a story leaves `review` only via
+`/bmad-code-review`, and `sync` closes the bead from the `done` it writes. Hand-close is
+for discovered/chore/decision beads, and for stories cut in correct-course (with `--reason`).
+`deferred-work.md` is a pointer list, not a register: every entry starts `bead: <id>` —
+the bead, filed first, carries the substance.
+
+Standards the team has adopted (style guides, coding standards, `llms.txt` snapshots)
+live in `docs/references/` — read the one governing the code you are about to write.
 
 ## Session start
 
 `bd prime` runs automatically (Claude Code `SessionStart` hook). If you are a different agent,
 run it yourself. Then:
 
+One table of everything, then what is actually unblocked:
+
 ```bash
-uv run scripts/bmad_beads.py status     # stories × (sprint-status, beads, ready, assignee)
-bd ready --type task --label story      # what is actually unblocked
+uv run scripts/bmad_beads.py status
+bd ready --type task --label story
 ```
 
 ## Picking up a story
 
+Choose one from `bd ready` (the key is in its `metadata.bmad_story_key`), then let
+BMAD do plan → implement → review → present:
+
 ```bash
-bd ready --type task --label story             # choose one; the key is in its metadata.bmad_story_key
-/bmad-build <bmad_story_key>                   # BMAD does plan → implement → review → present
+bd ready --type task --label story
+/bmad-build <bmad_story_key>
 ```
 
 `/bmad-build` runs `scripts/bmad_beads.py claim <story_key>` on activation
@@ -46,17 +59,22 @@ the story is in `review`.
 
 ## While working
 
-- Out-of-scope work you discover: `bd create "<title>" -t task --deps discovered-from:<story-bead> -l discovered`. Keep going.
+- Out-of-scope work you discover: `bd create "<title>" -t task --deps discovered-from:<story-bead> -l discovered`. Keep going. Always a **top-level** bead — a child inherits the parent's labels (including `story`) and corrupts `bd ready --label story`.
 - Something future-you must know: `bd remember "<insight>"`.
-- Blocked on a human decision: `bd gate create --type=human --blocks <story-bead> --reason "<what you need>"`, then stop.
+- Blocked on a human decision: `bd gate create --type=human --blocks <story-bead> --reason "<what you need>"`, then stop. Humans list open gates with `bd gate list` and approve one by closing the gate bead (`bd close <gate-id> --reason approved`). An agent never closes a human gate. (`bd ready --gated` is not a gate listing.)
 - Decisions with lasting consequences: `bd create "<decision>" -t decision -l adr`.
 
 ## Finishing
 
+Sync (idempotent, safe any time), push the beads data, commit locally — the bead id
+in the message lets `bd doctor` link commits. A **local commit and `bd dolt push` are
+permitted for agents** even under a conservative no-git-ops profile; `git push` to the
+code remote stays a human decision.
+
 ```bash
-uv run scripts/bmad_beads.py sync      # idempotent; safe to run any time
-bd dolt push                           # if a Dolt remote is configured (bd init detected origin)
-git commit -m "<msg> (<bead-id>)"      # bead id in the message lets `bd doctor` link commits
+uv run scripts/bmad_beads.py sync
+bd dolt push
+git commit -m "<msg> (<bead-id>)"
 ```
 
 ## Planning work
