@@ -3,7 +3,7 @@
 [workflow]
 
 activation_steps_append = [
-  "If a `story_key` resolves, claim its bead: find it with `bd list --label story --json` (metadata.bmad_story_key == story_key), then `bd update <id> --claim`.",
+  "GUARD (bmad-beads bridge): as soon as `story_key` is resolved and BEFORE any planning or implementation, run `uv run scripts/bmad_beads.py claim {story_key}` from the project root. Exit 0 = the bead is claimed, continue. Exit 1 = HALT: show the user the script's message verbatim (it names the open blockers or the current assignee) and stop the workflow. Never bypass with `--force` on your own; only the user may ask for that.",
 ]
 
 persistent_facts = [

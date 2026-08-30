@@ -32,14 +32,17 @@ bd ready --type task --label story      # what is actually unblocked
 ## Picking up a story
 
 ```bash
-bd ready --type task --label story --json     # choose one; read its metadata.bmad_story_key
-bd update <bead-id> --claim                    # atomic; fails if someone else holds it
+bd ready --type task --label story             # choose one; the key is in its metadata.bmad_story_key
 /bmad-build <bmad_story_key>                   # BMAD does plan → implement → review → present
 ```
 
-`/bmad-build` claims the bead itself on activation (see `_bmad/custom/bmad-build.toml`) and runs
-`scripts/bmad_beads.py sync` on completion, so the bead follows the story. Then `/bmad-code-review`
-when the story is in `review`.
+`/bmad-build` runs `scripts/bmad_beads.py claim <story_key>` on activation
+(`_bmad/custom/bmad-build.toml`). That is the bridge's one hard guard: it exits non-zero — and
+the build halts — if the story has open blockers, is held by someone else, is in review, or is
+already done. Neither BMAD nor beads checks this on their own (BMAD's build step has no readiness
+check; beads lets you claim a blocked bead). `--force` exists for deliberate overrides only.
+On completion the build runs `sync`, so the bead follows the story. Then `/bmad-code-review` when
+the story is in `review`.
 
 ## While working
 
@@ -72,6 +75,7 @@ a story (or `**Depends on:** Epic 1` under an epic). Story order is **not** a de
 | `uv run scripts/bmad_beads.py import` | `epics.md` → beads (idempotent, adds only) |
 | `uv run scripts/bmad_beads.py sync` | `sprint-status.yaml` ↔ beads per the ownership table |
 | `uv run scripts/bmad_beads.py status` | one table of everything |
+| `uv run scripts/bmad_beads.py claim <key>` | readiness + ownership guard, then claim (what `/bmad-build` runs) |
 | `uv run scripts/bmad_beads.py doctor` | preconditions + drift |
 | `bd ready` / `bd show <id>` / `bd update <id> --claim` / `bd close <id> --reason` | the beads basics |
 | `bd dep tree <id>` / `bd blocked` | why something is not ready |
