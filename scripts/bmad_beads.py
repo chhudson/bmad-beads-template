@@ -25,6 +25,8 @@ Commands
                               deps from `Depends on:` lines). Idempotent.
   sync     sprint-status.yaml ↔ beads, per the contract above. Idempotent.
   status   one table: story key, bead id, yaml status, bead status, ready.
+  claim    guard for /bmad-build: refuse (exit 1) unless the story's bead is
+           in `bd ready` and unclaimed; otherwise `bd update --claim` it.
   doctor   preconditions + drift report. Exit 1 on hard failures.
 
 Everything shells out to `bd --json`; no beads internals are touched.
@@ -172,7 +174,9 @@ class BD:
     def update(self, issue_id: str, **kw: str) -> None:
         args = ["update", issue_id]
         for k, v in kw.items():
-            args += [f"--{k.replace('_', '-')}", v]
+            args.append(f"--{k.replace('_', '-')}")
+            if v != "":
+                args.append(v)
         self.run(*args, mutating=True)
 
     def close(self, issue_id: str, reason: str) -> None:
@@ -681,6 +685,63 @@ def _key_sort(k: str):
     return (int(m.group(1)), int(m.group(2)), m.group(3)) if m else (10**6, 0, k)
 
 
+def cmd_claim(args: argparse.Namespace) -> int:
+    """The one hard guard in the bridge. `/bmad-build` calls this on activation; a non-zero exit
+    is the signal to stop. Neither BMAD (no readiness check in build step-01) nor beads (a
+    blocked bead can still be claimed) enforces this on their own."""
+    root = project_root()
+    bd = BD(root, verbose=args.verbose)
+    idx = load_index(bd)
+    key = args.story_key.strip()
+    issue = idx.stories.get(key)
+    if issue is None:
+        # accept a bead id too
+        issue = next((i for i in idx.stories.values() if i["id"] == key), None)
+    if issue is None:
+        print(f"claim: no bead for story '{key}' — run `bmad_beads.py import` first (or the key is misspelled)", file=sys.stderr)
+        return 1
+    bid, st, who = issue["id"], issue.get("status", "open"), issue.get("assignee") or ""
+    me = args.actor or os.environ.get("BEADS_ACTOR") or _git_user(root) or ""
+    if st == "closed":
+        print(f"claim: {bid} ({key}) is already closed — nothing to build", file=sys.stderr)
+        return 1
+    if st == "in_progress" and who and who != me:
+        print(f"claim: {bid} ({key}) is in progress by '{who}' — pick another story (bd ready) or ask them to release it", file=sys.stderr)
+        return 1
+    if st == "in_progress" and (not who or who == me):
+        print(f"claim: {bid} ({key}) already in progress by you — resuming")
+        return 0
+    if st == "review":
+        print(f"claim: {bid} ({key}) is in review — run /bmad-code-review, not /bmad-build", file=sys.stderr)
+        return 1
+    if st == "blocked":
+        print(f"claim: {bid} ({key}) is marked blocked — `bd show {bid}` for the reason", file=sys.stderr)
+        return 1
+    ready = bd.ready_ids()
+    if bid not in ready and not args.force:
+        blockers = open_blockers(issue, idx.statuses)
+        names = ", ".join(f"{b} ({_title_of(bd, b)})" for b in blockers) or "unknown — see `bd dep tree`"
+        print(f"claim: {bid} ({key}) is NOT ready — blocked by {names}", file=sys.stderr)
+        print(f"        finish the blockers first, or `bmad_beads.py claim {key} --force` to override on purpose", file=sys.stderr)
+        return 1
+    bd.update(bid, claim="")  # `--claim` takes no value
+    print(f"claim: {bid} ({key}) claimed" + (" (forced past open blockers)" if bid not in ready else ""))
+    return 0
+
+
+def _git_user(root: Path) -> str:
+    r = subprocess.run(["git", "config", "user.name"], cwd=root, capture_output=True, text=True)
+    return r.stdout.strip()
+
+
+def _title_of(bd: BD, bid: str) -> str:
+    try:
+        i = bd.show(bid)
+        return (i or {}).get("title", "")[:50]
+    except RuntimeError:
+        return ""
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = project_root()
     planning, impl = bmm_paths(root)
@@ -762,6 +823,12 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--status-file")
     t.add_argument("--json", action="store_true")
     t.set_defaults(fn=cmd_status)
+    c = sub.add_parser("claim", help="guard + claim a story's bead before /bmad-build (exit 1 if not ready)")
+    c.add_argument("story_key", help="bmad story key (e.g. 2-1-read-endpoint) or bead id")
+    c.add_argument("--force", action="store_true", help="claim even though blockers are open")
+    c.add_argument("--actor", help="who is claiming (default: BEADS_ACTOR or git user.name)")
+    c.add_argument("-v", "--verbose", action="store_true")
+    c.set_defaults(fn=cmd_claim)
     d = sub.add_parser("doctor", help="preconditions + drift")
     d.set_defaults(fn=cmd_doctor)
     args = p.parse_args(argv)

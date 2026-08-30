@@ -51,9 +51,9 @@ bd mol pour bmad-planning --var initiative="my thing"   # optional: planning ste
   /bmad-prd ──► /bmad-architecture
   /bmad-create-epics-and-stories ──► import ─────────────────────► epics + story tasks
         `**Depends on:** 1.3`                                        + blocks edges
-  /bmad-sprint-planning ──────────► sync  ◄───── bd ready ───────── ready-for-dev derived
+  /bmad-sprint-planning ────────► sync  ◄───── bd ready ─────── ready-for-dev derived
   /bmad-build <story-key> ────────► sync ───── in-progress/review ─► bead status
-        (claims the bead on start)                                   discovered-from beads
+        (claim guard: halts if blocked/held)                         discovered-from beads
   /bmad-code-review ──────────────► sync ───── done ───────────────► bead closed
                                                                      epic milestone closes
                                                                      ⇒ next epic unblocks
@@ -70,7 +70,7 @@ CLAUDE.md                      points at AGENTS.md; project facts go below the l
 .claude/settings.json          SessionStart → bd prime
 _bmad/custom/*.toml            BMAD overrides: dependency convention, claim-on-start, sync-on-complete
 .beads/formulas/bmad-planning.formula.toml   planning phases as a beads molecule
-scripts/bmad_beads.py          the bridge: import | sync | status | doctor  (stdlib only)
+scripts/bmad_beads.py          the bridge: import | sync | claim | status | doctor  (stdlib only)
 scripts/test_bmad_beads.py     unit tests for the parser and the sprint-status editor
 scripts/bootstrap.sh           idempotent setup
 Taskfile.yml                   task status | ready | import | sync | doctor | push | pull | plan

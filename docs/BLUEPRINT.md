@@ -96,7 +96,7 @@ merge, survives `bmad-method install --action update`):
 |---|---|---|---|
 | `bmad-create-epics-and-stories` | — | the `Depends on:` convention; keys are stable | `import --dry-run`, confirm, `import` |
 | `bmad-sprint-planning` | — | `ready-for-dev` is derived, never hand-set | `import` + `sync` + `status` |
-| `bmad-build` / `bmad-build-auto` | claim the bead (`--claim`; stop if held by someone else) | discovered work → beads; insights → `bd remember` | `sync`, `bd dolt push` |
+| `bmad-build` / `bmad-build-auto` | `bmad_beads.py claim <story_key>` — exit 1 halts the build if blocked, held by someone else, in review, or done | discovered work → beads; insights → `bd remember` | `sync`, `bd dolt push` |
 | `bmad-code-review` | — | `[Defer]` findings → beads | `sync` |
 | `bmad-retrospective` | — | — | `sync`; action items → chores; lessons → `bd remember` |
 | `bmad-correct-course` | — | keep `Depends on:` lines true; close, don't delete | `import` + `doctor` |
@@ -133,6 +133,12 @@ Both modes use the same bridge, the same overrides, the same protocol. `.beads/i
 an *export* for viewers and migration, not the source of truth; the template does not enable it.
 
 ## 6. Known seams and how they fail
+
+- **What is actually enforced vs. advised.** Only one thing is a hard guard: `claim`, which
+  `/bmad-build` runs on activation and which exits non-zero for a blocked, held, in-review or
+  closed story. Everything else — `Depends on:` lines, discovered-work capture, the completion
+  sync — is an instruction the agent follows. Neither upstream tool enforces readiness: BMAD's
+  build step-01 has no readiness check, and beads happily claims a bead with open blockers.
 
 - **`on_complete` is advisory.** An agent that exits early skips the sync. Mitigation: `sync` is
   idempotent, `status`/`doctor` are one command, and the `SessionStart` hook means the next
