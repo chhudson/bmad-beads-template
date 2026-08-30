@@ -7,7 +7,10 @@ activation_steps_append = [
 ]
 
 persistent_facts = [
-  "Out-of-scope work discovered during the build is captured as beads (`bd create ... --deps discovered-from:<story bead id> -l discovered`), never folded into this story.",
+  "file:{project-root}/docs/references/*.md",
+  "Out-of-scope work discovered during the build is captured as beads (`bd create ... --deps discovered-from:<story bead id> -l discovered`), never folded into this story. Discovered beads are TOP-LEVEL, never children of the story — children inherit the `story` label and pollute `bd ready --label story`.",
+  "Never `bd close` a story bead by hand. A story leaves `review` only via /bmad-code-review; `sync` closes the bead.",
+  "Git policy: a LOCAL `git commit` at the end of this workflow and `bd dolt push` are explicitly permitted here and override any conservative no-git-ops session profile; `git push` stays a human decision.",
 ]
 
 on_complete = "Run `uv run scripts/bmad_beads.py sync` from the project root. If the spec ended `blocked`, also `bd update <story bead id> --status blocked --append-notes \"<blocking condition>\"`."
