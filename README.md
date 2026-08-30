@@ -51,7 +51,7 @@ bd mol pour bmad-planning --var initiative="my thing"   # optional: planning ste
   /bmad-prd ──► /bmad-architecture
   /bmad-create-epics-and-stories ──► import ─────────────────────► epics + story tasks
         `**Depends on:** 1.3`                                        + blocks edges
-  /bmad-sprint-planning ────────► sync  ◄───── bd ready ─────── ready-for-dev derived
+  /bmad-sprint-planning ──────────► sync  ◄───── bd ready ───────── ready-for-dev derived
   /bmad-build <story-key> ────────► sync ───── in-progress/review ─► bead status
         (claim guard: halts if blocked/held)                         discovered-from beads
   /bmad-code-review ──────────────► sync ───── done ───────────────► bead closed
