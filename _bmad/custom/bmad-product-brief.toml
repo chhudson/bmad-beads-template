@@ -1,0 +1,15 @@
+# bmad-beads bridge — override for /bmad-product-brief
+# If planning runs as a beads molecule (`bd mol pour bmad-planning`), keep the
+# graph honest: claim this phase's bead on start, close it on completion.
+# If no molecule is poured, these steps are no-ops — skip silently.
+
+[workflow]
+
+activation_steps_append = [
+  "bmad-beads bridge: check `bd ready` for an open planning bead for this phase (a task whose title contains 'brief' from the bmad-planning molecule). If one exists, `bd update <id> --claim` it now. If none exists, continue silently — the molecule is optional.",
+]
+
+persistent_facts = [
+]
+
+on_complete = "bmad-beads bridge: if you claimed a planning bead on activation, `bd close <id> --reason \"artifact complete: <output path>\"`. Record 1-3 durable decisions from this phase with `bd remember \"<decision>\"` so later sessions inherit them."
