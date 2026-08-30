@@ -1,0 +1,9 @@
+# Team overrides for _bmad/config.toml — committed, applies to everyone on the project.
+# The installer never touches this file. Tables deep-merge over the generated config.
+#
+# Nothing is pinned by default. Typical uses:
+#   [modules.bmm]
+#   project_knowledge = "{project-root}/docs"
+#
+#   [agents.bmad-agent-dev]
+#   description = "Prefers uv workspaces, Taskfile targets, and pytest over ad-hoc scripts."

@@ -1,0 +1,63 @@
+# BMAD phases 1–3 as a beads molecule.
+#
+# Pour one per initiative so `bd ready` knows the next planning step, and so planning work
+# is visible in the same graph as delivery work:
+#
+#   bd cook bmad-planning
+#   bd mol pour bmad-planning --var initiative="cdq-v4 pilot"
+#
+# Each step names the BMAD skill to run. Human gates are where you (not the agent) sign off.
+# Phase 4 (delivery) is NOT modelled here — `scripts/bmad_beads.py import` turns epics.md into
+# real story beads once step `epics` closes.
+
+formula = "bmad-planning"
+description = "BMAD Method v6 planning pipeline: brief → PRD → architecture → epics → sprint plan → beads import"
+version = 1
+type = "workflow"
+
+[vars.initiative]
+description = "Short name of the thing being planned (used in bead titles)"
+required = true
+
+[[steps]]
+id = "brief"
+title = "{{initiative}}: product brief (/bmad-product-brief)"
+description = "Optional analysis first: /bmad-brainstorming, /bmad-deep-recon. Output: planning-artifacts/briefs/brief-*/brief.md"
+
+[[steps]]
+id = "prd"
+title = "{{initiative}}: PRD (/bmad-prd)"
+description = "Output: planning-artifacts/prds/prd-*/prd.md (+ addendum.md, .memlog.md)"
+needs = ["brief"]
+
+[[steps]]
+id = "prd-signoff"
+title = "{{initiative}}: PRD sign-off"
+description = "Human reads the PRD and the .memlog.md open decisions. Resolve [OPEN] items or accept them explicitly."
+needs = ["prd"]
+[steps.gate]
+type = "human"
+
+[[steps]]
+id = "architecture"
+title = "{{initiative}}: architecture (/bmad-architecture)"
+description = "Output: planning-artifacts/architecture/architecture-*/ARCHITECTURE-SPINE.md. Optional: /bmad-ux in parallel."
+needs = ["prd-signoff"]
+
+[[steps]]
+id = "epics"
+title = "{{initiative}}: epics & stories (/bmad-create-epics-and-stories)"
+description = "Output: planning-artifacts/epics.md. Every story that cannot start until another finishes carries a `**Depends on:** N.M` line — that is what the beads graph is built from."
+needs = ["architecture"]
+
+[[steps]]
+id = "sprint-plan"
+title = "{{initiative}}: sprint planning + readiness gate (/bmad-sprint-planning)"
+description = "Output: implementation-artifacts/sprint-status.yaml. Readiness verdict must be PASS or CONCERNS-accepted."
+needs = ["epics"]
+
+[[steps]]
+id = "beads-import"
+title = "{{initiative}}: import stories into beads (uv run scripts/bmad_beads.py import && sync)"
+description = "Normally fired automatically by the on_complete overrides in _bmad/custom/. Run by hand if it was not. Then `bd ready` shows the first stories."
+needs = ["sprint-plan"]

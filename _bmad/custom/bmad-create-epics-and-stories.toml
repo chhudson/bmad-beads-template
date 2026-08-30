@@ -1,0 +1,11 @@
+# bmad-beads bridge — override for /bmad-create-epics-and-stories
+# Teaches the PM to emit the dependency convention the bridge parses, then imports on completion.
+
+[workflow]
+
+persistent_facts = [
+  "DEPENDENCY CONVENTION (bmad-beads bridge): directly under any `### Story N.M:` heading whose work cannot start until other stories are finished, add one line `**Depends on:** A.B, C.D` listing the blocking story numbers. Under an epic heading that cannot start until a whole earlier epic is finished, add `**Depends on:** Epic K`. Only real blocking relationships — story order within an epic does NOT imply a dependency; independent stories are worked in parallel. Do not invent dependencies to make a sequence.",
+  "Story titles become stable keys (`{epic}-{story}-{slug}`) in sprint-status.yaml and beads. Once a story exists in beads, retitling it forks the key — prefer editing the body over the title after import.",
+]
+
+on_complete = "Run `uv run scripts/bmad_beads.py import --dry-run` from the project root and show the user the summary line. If they confirm, run it without --dry-run. This creates one beads epic per `## Epic N:` and one child task per `### Story N.M:`, wiring dependencies from the `Depends on:` lines. It is idempotent."

@@ -1,0 +1,15 @@
+# bmad-beads bridge — override for /bmad-build
+# Claim the bead when work starts; push the resulting status into beads when the build completes.
+
+[workflow]
+
+activation_steps_append = [
+  "If a `story_key` resolves, find its bead with `bd list --label story --json` (metadata.bmad_story_key == story_key) and claim it: `bd update <id> --claim`. If the bead is already claimed by someone else, stop and tell the user who holds it.",
+]
+
+persistent_facts = [
+  "Work discovered during the build that is out of scope for this story is captured in beads, not in prose: `bd create \"<title>\" -t task --deps discovered-from:<this story bead id> -l discovered` — then keep going. Do not silently widen the story.",
+  "Durable project insights (a gotcha, a convention, a decision) go to `bd remember \"<insight>\"` so `bd prime` carries them into the next session.",
+]
+
+on_complete = "Run `uv run scripts/bmad_beads.py sync` from the project root so the bead reflects the sprint-status change (in-progress / review). Then run `bd dolt push` if a Dolt remote is configured (ignore the error if not)."

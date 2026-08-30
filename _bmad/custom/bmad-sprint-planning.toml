@@ -1,0 +1,10 @@
+# bmad-beads bridge — override for /bmad-sprint-planning
+# After sprint-status.yaml exists, make sure every story has a bead and derive ready-for-dev from `bd ready`.
+
+[workflow]
+
+persistent_facts = [
+  "This project tracks execution state in beads (tracking_system: beads). `ready-for-dev` in sprint-status.yaml is DERIVED from `bd ready` by `scripts/bmad_beads.py sync` — never set it by hand; a story is ready when its beads blockers are closed.",
+]
+
+on_complete = "Run `uv run scripts/bmad_beads.py import` and then `uv run scripts/bmad_beads.py sync` from the project root, then show the user `uv run scripts/bmad_beads.py status`. The first ready stories are the ones `bd ready` lists."

@@ -1,0 +1,10 @@
+# bmad-beads bridge — override for /bmad-correct-course
+# Course corrections edit epics.md / sprint-status.yaml; the graph must follow.
+
+[workflow]
+
+persistent_facts = [
+  "When a story is added or its dependencies change, keep the `**Depends on:**` lines in epics.md accurate — the beads graph is rebuilt from them. When a story is removed, close its bead with a reason rather than deleting it.",
+]
+
+on_complete = "Run `uv run scripts/bmad_beads.py import` (adds new stories/deps; never deletes) then `uv run scripts/bmad_beads.py doctor` and show the user any drift it reports."

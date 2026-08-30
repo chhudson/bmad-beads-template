@@ -1,0 +1,9 @@
+# bmad-beads bridge — override for /bmad-code-review
+
+[workflow]
+
+persistent_facts = [
+  "Review findings triaged as [Defer] are also captured in beads: `bd create \"<finding>\" -t task --deps discovered-from:<story bead id> -l deferred,review` so deferred-work.md and the graph agree.",
+]
+
+on_complete = "Run `uv run scripts/bmad_beads.py sync` from the project root so the bead closes (done) or returns to in_progress (patches requested). Then `bd dolt push` if a remote is configured."

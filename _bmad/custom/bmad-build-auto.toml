@@ -1,0 +1,13 @@
+# bmad-beads bridge — override for /bmad-build-auto (unattended single-story build)
+
+[workflow]
+
+activation_steps_append = [
+  "If a `story_key` resolves, claim its bead: find it with `bd list --label story --json` (metadata.bmad_story_key == story_key), then `bd update <id> --claim`.",
+]
+
+persistent_facts = [
+  "Out-of-scope work discovered during the build is captured as beads (`bd create ... --deps discovered-from:<story bead id> -l discovered`), never folded into this story.",
+]
+
+on_complete = "Run `uv run scripts/bmad_beads.py sync` from the project root. If the spec ended `blocked`, also `bd update <story bead id> --status blocked --append-notes \"<blocking condition>\"`."

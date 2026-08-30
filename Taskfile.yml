@@ -1,0 +1,49 @@
+# https://taskfile.dev — thin, discoverable entry points over the bridge and the two tools.
+version: '3'
+
+tasks:
+  bootstrap:
+    desc: Install BMAD + beads and wire the bridge (idempotent)
+    cmds: [bash scripts/bootstrap.sh {{.CLI_ARGS}}]
+
+  status:
+    desc: Stories × (sprint-status, beads, ready, assignee)
+    cmds: [uv run --quiet scripts/bmad_beads.py status]
+
+  ready:
+    desc: Unblocked stories, from beads
+    cmds: [bd ready --type task --label story]
+
+  import:
+    desc: epics.md → beads (idempotent)
+    cmds: [uv run --quiet scripts/bmad_beads.py import {{.CLI_ARGS}}]
+
+  sync:
+    desc: sprint-status.yaml ↔ beads
+    cmds: [uv run --quiet scripts/bmad_beads.py sync {{.CLI_ARGS}}]
+
+  doctor:
+    desc: Preconditions + drift between BMAD and beads
+    cmds: [uv run --quiet scripts/bmad_beads.py doctor]
+
+  test:
+    desc: Bridge unit tests (parser, sprint-status editor)
+    cmds: [uv run --quiet scripts/test_bmad_beads.py]
+
+  push:
+    desc: Sync beads to the git remote (Dolt data lives under refs/dolt/data)
+    cmds: [bd dolt push]
+
+  pull:
+    desc: Pull beads from the git remote
+    cmds: [bd dolt pull]
+
+  plan:
+    desc: 'Pour the BMAD planning molecule: task plan -- "<initiative>"'
+    cmds:
+      - bd cook bmad-planning
+      - bd mol pour bmad-planning --var initiative="{{.CLI_ARGS}}"
+
+  bmad:update:
+    desc: Update BMAD skills in place (keeps _bmad/custom/)
+    cmds: [npx -y bmad-method@latest install --yes --directory . --tools claude-code --modules bmm --action update]

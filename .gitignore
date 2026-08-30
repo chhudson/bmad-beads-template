@@ -1,0 +1,28 @@
+# --- beads: the Dolt database is never committed; sync is `bd dolt push/pull` ---
+# (.beads/.gitignore, written by `bd init`, covers embeddeddolt/, dolt/, locks, etc.)
+.beads/*.db*
+.beads/embeddeddolt/
+.beads/dolt/
+
+# --- BMAD: installer output is regenerated; only _bmad/custom/ carries team intent ---
+# Keep _bmad/ committed so a clone has the exact skill versions the team planned with.
+_bmad/custom/config.user.toml
+_bmad/custom/*.user.toml
+_bmad-output/**/.memlog.md.bak
+
+# --- Claude Code ---
+.claude/settings.local.json
+
+# --- Python / uv ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

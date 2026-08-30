@@ -1,0 +1,5 @@
+# bmad-beads bridge — override for /bmad-retrospective
+
+[workflow]
+
+on_complete = "Run `uv run scripts/bmad_beads.py sync`. For each retrospective action item, create a bead: `bd create \"<action>\" -t chore -l retro,epic-<N> -a <owner>` so it shows in `bd ready` rather than only in sprint-status.yaml. Then `bd remember` the one or two lessons that should shape the next epic."
