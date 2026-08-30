@@ -178,6 +178,35 @@ class SprintStatusTests(unittest.TestCase):
         self.assertFalse(ss.changed)
 
 
+class BeadsToBmadTests(unittest.TestCase):
+    """The beads->BMAD decision (sync's pure core), incl. the review send-back."""
+
+    def test_forward_moves(self):
+        self.assertEqual(bb.beads_to_bmad("closed", "review", False), "done")
+        self.assertEqual(bb.beads_to_bmad("in_progress", "ready-for-dev", False), "in-progress")
+        self.assertEqual(bb.beads_to_bmad("review", "backlog", False), "review")
+        self.assertEqual(bb.beads_to_bmad("review", "ready-for-dev", False), "review")
+
+    def test_readiness_derivation(self):
+        self.assertEqual(bb.beads_to_bmad("open", "backlog", True), "ready-for-dev")
+        self.assertEqual(bb.beads_to_bmad("open", "ready-for-dev", False), "backlog")
+        self.assertIsNone(bb.beads_to_bmad("open", "ready-for-dev", True))
+        self.assertIsNone(bb.beads_to_bmad("open", "backlog", False))
+
+    def test_review_never_overwrites_in_progress(self):
+        # Code-review send-back: yaml in-progress + bead review must NOT be
+        # re-promoted to review from the beads side (issue #12).
+        self.assertIsNone(bb.beads_to_bmad("review", "in-progress", False))
+        self.assertIsNone(bb.beads_to_bmad("review", "review", False))
+
+    def test_never_regresses_done(self):
+        self.assertIsNone(bb.beads_to_bmad("in_progress", "done", False))
+        self.assertIsNone(bb.beads_to_bmad("open", "done", True))
+
+    def test_unknown_status_passes_through(self):
+        self.assertIsNone(bb.beads_to_bmad("closed", "awaiting-operator", False))
+
+
 class RankTests(unittest.TestCase):
     def test_vocab(self):
         self.assertLess(bb.BMAD_RANK["ready-for-dev"], bb.BMAD_RANK["in-progress"])
