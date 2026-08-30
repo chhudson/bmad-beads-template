@@ -33,16 +33,20 @@ giving every fact exactly one writer.
 | Retrospective rows, `action_items` | BMAD | — | `sprint-status.yaml` (bridge never touches) |
 | Claims / assignees | beads (`bd update --claim`) | agents, `status` | beads only |
 | Discovered work, deferred findings, decisions | beads (`discovered-from`, `-t decision`) | `bd ready` | beads only |
+| `deferred-work.md` entries | BMAD skills, as **pointers** (`bead: <id>` + one line) | humans | the bead carries the substance; the file never duplicates it |
 | Durable insights | beads (`bd remember`) | `bd prime` at session start | beads only |
 | Unknown statuses (e.g. bmad-loop `awaiting-operator`) | whoever wrote them | — | passed through untouched |
 
 Two rules make the sync trivially safe:
 
 1. **Monotonic within the BMAD vocabulary.** Story status only moves forward
-   (`backlog → ready-for-dev → in-progress → review → done`), in both stores, with one
-   documented exception: `ready-for-dev → backlog` when a *new* blocker appears in the graph. That
-   demotion is the whole point of the graph, and BMAD itself never reads `ready-for-dev` as a
-   promise.
+   (`backlog → ready-for-dev → in-progress → review → done`), in both stores, with two
+   documented exceptions: `ready-for-dev → backlog` when a *new* blocker appears in the graph
+   (the demotion is the whole point of the graph, and BMAD never reads `ready-for-dev` as a
+   promise), and `review → in-progress` when code-review requests changes — that move is
+   BMAD's to make, `sync` mirrors it into the bead (keeping the claim), and the beads side
+   never writes `review` over an `in-progress` story. The decision function is
+   `beads_to_bmad()` and is unit-tested.
 2. **Idempotent, stateless.** `sync` computes a fixed point from the two current states. It keeps
    no cursor, no last-sync timestamp, and no conflict log. Running it twice is a no-op; running it
    after a crash is safe.
@@ -94,6 +98,7 @@ merge, survives `bmad-method install --action update`):
 
 | Skill | `activation_steps_append` | `persistent_facts` | `on_complete` |
 |---|---|---|---|
+| `bmad-product-brief` / `bmad-prd` / `bmad-architecture` | claim this phase's molecule bead if one exists | — | close the bead, `bd remember` key decisions; PRD also names the human sign-off gate |
 | `bmad-create-epics-and-stories` | — | the `Depends on:` convention; keys are stable | `import --dry-run`, confirm, `import` |
 | `bmad-sprint-planning` | — | `ready-for-dev` is derived, never hand-set | `import` + `sync` + `status` |
 | `bmad-build` / `bmad-build-auto` | `bmad_beads.py claim <story_key>` — exit 1 halts the build if blocked, held by someone else, in review, or done | discovered work → beads; insights → `bd remember` | `sync`, `bd dolt push` |
@@ -140,6 +145,11 @@ an *export* for viewers and migration, not the source of truth; the template doe
   sync — is an instruction the agent follows. Neither upstream tool enforces readiness: BMAD's
   build step-01 has no readiness check, and beads happily claims a bead with open blockers.
 
+- **The default beads agent profile forbids git ops**, which blocks the two the bridge needs:
+  the local commit BMAD's build asks for, and `bd dolt push`. The bridge grants exactly those
+  two in three places — the build/review overrides' persistent facts, the `bmad-git-policy`
+  memory seeded by `bootstrap.sh`, and AGENTS.md — and nothing more: `git push` to the code
+  remote stays a human decision.
 - **`on_complete` is advisory.** An agent that exits early skips the sync. Mitigation: `sync` is
   idempotent, `status`/`doctor` are one command, and the `SessionStart` hook means the next
   session sees the true graph regardless.

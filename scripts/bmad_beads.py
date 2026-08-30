@@ -556,6 +556,32 @@ def _ensure_gate(bd: BD, idx: Index, epic: Epic, epic_id: str, priority: int) ->
     return gid
 
 
+def beads_to_bmad(bstat: str, yaml_status: str, is_ready: bool) -> str | None:
+    """The beads→BMAD story-status decision. Pure, so it is unit-testable.
+
+    Monotonic within the BMAD vocabulary, with two sanctioned exceptions:
+    ready-for-dev → backlog when a new blocker appears, and — handled in the
+    BMAD→beads pass, honoured here by *not* re-promoting — review → in-progress
+    when code-review sends a story back. `review` is therefore never written
+    over `in-progress` from the beads side. Unknown statuses pass through.
+    """
+    y_rank = BMAD_RANK.get(yaml_status)
+    if y_rank is None:
+        return None  # e.g. bmad-loop's awaiting-operator — pass through
+    if bstat == "closed" and y_rank < BMAD_RANK["done"]:
+        return "done"
+    if bstat == "in_progress" and y_rank < BMAD_RANK["in-progress"]:
+        return "in-progress"
+    if bstat == "review" and y_rank < BMAD_RANK["in-progress"]:
+        return "review"
+    if bstat == "open":
+        if is_ready and yaml_status == "backlog":
+            return "ready-for-dev"
+        if not is_ready and yaml_status == "ready-for-dev":
+            return "backlog"
+    return None
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
     root = project_root()
     _, impl = bmm_paths(root)
@@ -584,6 +610,14 @@ def cmd_sync(args: argparse.Namespace) -> int:
             changes.append(f"{key}: beads {bstat} → {target}")
             issue["status"] = target
             idx.statuses[issue["id"]] = target
+        elif yaml_status == "in-progress" and bstat == "review":
+            # The one sanctioned backward move: code-review requested changes and
+            # sent the story back to in-progress. BMAD owns the story lifecycle,
+            # so this is authoritative — the bead follows (the claim is kept).
+            bd.update(issue["id"], status="in_progress")
+            changes.append(f"{key}: beads review → in_progress (code-review sent it back)")
+            issue["status"] = "in_progress"
+            idx.statuses[issue["id"]] = "in_progress"
 
     # Epic milestones + epic beads: close when every child story is closed (BMAD keeps its own epic-N row).
     for ekey, eissue in idx.epics.items():
@@ -608,24 +642,16 @@ def cmd_sync(args: argparse.Namespace) -> int:
         if issue is None:
             continue  # story not imported (or removed) — leave BMAD alone; doctor reports it
         bid, bstat = issue["id"], issue.get("status", "open")
-        y_rank = BMAD_RANK.get(yaml_status)
-        if y_rank is None:
-            continue  # unknown BMAD status (e.g. awaiting-operator) — pass through
 
         # ---- beads → BMAD ----
-        if bstat == "closed" and y_rank < BMAD_RANK["done"]:
-            ss.set(key, "done") and changes.append(f"{key}: yaml {yaml_status} → done (closed in beads)")
-        elif bstat == "in_progress" and y_rank < BMAD_RANK["in-progress"]:
-            ss.set(key, "in-progress") and changes.append(f"{key}: yaml {yaml_status} → in-progress (claimed in beads)")
-        elif bstat == "review" and y_rank < BMAD_RANK["review"]:
-            ss.set(key, "review") and changes.append(f"{key}: yaml {yaml_status} → review (beads)")
-        elif bstat == "open":
-            is_ready = bid in ready
-            if is_ready and yaml_status == "backlog":
-                ss.set(key, "ready-for-dev") and changes.append(f"{key}: yaml backlog → ready-for-dev (bd ready)")
-            elif not is_ready and yaml_status == "ready-for-dev":
-                blockers = open_blockers(issue, idx.statuses)
-                ss.set(key, "backlog") and changes.append(f"{key}: yaml ready-for-dev → backlog (blocked by {', '.join(blockers) or 'deps'})")
+        target2 = beads_to_bmad(bstat, yaml_status, bid in ready)
+        if target2 == "backlog":
+            blockers = open_blockers(issue, idx.statuses)
+            ss.set(key, "backlog") and changes.append(f"{key}: yaml ready-for-dev → backlog (blocked by {', '.join(blockers) or 'deps'})")
+        elif target2:
+            reason = {"done": "closed in beads", "in-progress": "claimed in beads",
+                      "review": "beads", "ready-for-dev": "bd ready"}[target2]
+            ss.set(key, target2) and changes.append(f"{key}: yaml {yaml_status} → {target2} ({reason})")
 
     # Epic rows: derived from story rows using BMAD's own rules (build lifts backlog→in-progress;
     # STATUS DEFINITIONS: done = all stories completed). Retrospective rows are never touched.
@@ -783,11 +809,48 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     for name in ("bmad-create-epics-and-stories", "bmad-sprint-planning", "bmad-build", "bmad-code-review"):
         p = root / "_bmad" / "custom" / f"{name}.toml"
         check(p.exists(), f"_bmad/custom/{name}.toml present", f"_bmad/custom/{name}.toml missing — BMAD will not call the bridge on completion", warn)
+    # An override whose filename matches no installed skill is silently never applied.
+    skills_dir = root / ".claude" / "skills"
+    if skills_dir.is_dir():
+        installed = {d.name for d in skills_dir.iterdir() if d.is_dir()}
+        for p in sorted((root / "_bmad" / "custom").glob("*.toml")):
+            if p.name.startswith("config") or p.name.endswith(".user.toml"):
+                continue
+            check(p.stem in installed, f"override {p.name} matches installed skill", f"override {p.name} matches NO installed skill — it will never be applied (typo?)", warn)
+    # Taskfile: an unquoted {{.CLI_ARGS}} inside a flow sequence is invalid YAML and breaks every `task` command.
+    tf = root / "Taskfile.yml"
+    if tf.exists():
+        bad_lines = [n for n, line in enumerate(tf.read_text(encoding="utf-8").splitlines(), 1)
+                     if "cmds: [" in line and "{{" in line and "['" not in line and '["' not in line]
+        check(not bad_lines, "Taskfile.yml quoting OK", f"Taskfile.yml lines {bad_lines}: unquoted {{{{...}}}} in a flow sequence is invalid YAML — quote the command", warn)
     ep = find_epics_file(planning)
     check(bool(ep), f"epics file: {ep.relative_to(root) if ep else ''}", "no epics file yet (run /bmad-create-epics-and-stories)", warn)
+    dw = impl / "deferred-work.md"
+    if dw.exists():
+        # Convention (#10): beads own deferred work; each markdown entry is a
+        # pointer whose first field is `bead: <id>`. Entries without one are a
+        # second register waiting to drift.
+        unlinked = sum(1 for line in dw.read_text(encoding="utf-8").splitlines()
+                       if line.startswith("- ") and not line.startswith("- bead:"))
+        if unlinked:
+            warn(f"deferred-work.md: {unlinked} entr{'y' if unlinked == 1 else 'ies'} without a leading `bead: <id>` — file the bead first, then point at it")
     ss = SprintStatus(impl / "sprint-status.yaml")
     if ss.exists():
         idx = load_index(bd)
+        # A bead carrying the `story` label but no bmad_story_key is usually a child
+        # bead created under a story (children inherit the parent's labels) — it
+        # pollutes `bd ready --label story` views. Discovered work belongs in
+        # top-level beads linked with --deps discovered-from:<story>.
+        mislabelled = []
+        for status in ("open", "in_progress", "blocked", "review"):
+            try:
+                for i in bd.list(status=status) or []:
+                    if LABEL_STORY in (i.get("labels") or []) and not (i.get("metadata") or {}).get(META_STORY_KEY):
+                        mislabelled.append(i["id"])
+            except RuntimeError:
+                pass
+        if mislabelled:
+            warn(f"beads carry the `story` label but no bmad_story_key (child beads inherit labels; recreate as top-level with --deps discovered-from): {', '.join(sorted(set(mislabelled))[:5])}")
         entries = {k: v for k, v in ss.entries().items() if not k.startswith("epic-")}
         missing = [k for k in entries if k not in idx.stories]
         orphans = [k for k in idx.stories if k not in entries]

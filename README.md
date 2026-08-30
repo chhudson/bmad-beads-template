@@ -75,7 +75,8 @@ scripts/test_bmad_beads.py     unit tests for the parser and the sprint-status e
 scripts/bootstrap.sh           idempotent setup
 Taskfile.yml                   task status | ready | import | sync | doctor | push | pull | plan
 docs/BLUEPRINT.md              the design: ownership, data flow, failure modes, team modes
-docs/references/               static copies of standards the team adopts
+docs/references/               static copies of standards the team adopts (styles, llms.txt)
+.github/workflows/bmad-beads-bridge.yml      CI for the BRIDGE only — add your project's own workflow
 ```
 
 `_bmad/` (skills, config) and `.beads/` (database) are created by the bootstrap, not shipped —

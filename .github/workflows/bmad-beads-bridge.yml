@@ -1,0 +1,18 @@
+# Tests the BMAD×beads BRIDGE only (scripts/bmad_beads.py and its unit tests).
+# It says nothing about your project's own code: a green check here proves only
+# that scripts/** was untouched or still passes. Add your project's own workflow
+# beside this one — nothing in this file will run code outside scripts/.
+name: bridge tests
+on:
+  push:
+    paths: ["scripts/**", ".github/workflows/bmad-beads-bridge.yml"]
+  pull_request:
+    paths: ["scripts/**"]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run scripts/test_bmad_beads.py
+      - run: uv run scripts/bmad_beads.py --help >/dev/null
