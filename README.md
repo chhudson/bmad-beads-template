@@ -44,23 +44,49 @@ bd mol pour bmad-planning --var initiative="my thing"   # optional: planning ste
 
 ## The loop
 
-```
-  BMAD (documents)                    bridge                       beads (graph)
-  ────────────────                    ──────                       ─────────────
-  /bmad-product-brief
-  /bmad-prd ──► /bmad-architecture
-  /bmad-create-epics-and-stories ──► import ─────────────────────► epics + story tasks
-        `**Depends on:** 1.3`                                        + blocks edges
-  /bmad-sprint-planning ──────────► sync  ◄───── bd ready ───────── ready-for-dev derived
-  /bmad-build <story-key> ────────► sync ───── in-progress/review ─► bead status
-        (claim guard: halts if blocked/held)                         discovered-from beads
-  /bmad-code-review ──────────────► sync ───── done ───────────────► bead closed
-                                                                     epic milestone closes
-                                                                     ⇒ next epic unblocks
+```mermaid
+flowchart TB
+    PB["/bmad-product-brief"] --> PRD["/bmad-prd"]
+    PRD --> ARCH["/bmad-architecture"]
+    ARCH --> EP["/bmad-create-epics-and-stories<br/>stories carry <b>Depends on:</b> lines"]
+    EP -- "bmad_beads.py import" --> G[("beads graph<br/>epic + story beads, blocks edges,<br/>epic milestone gates")]
+    G -- "bd ready" --> SYNC["bmad_beads.py sync"]
+    SYNC -- "ready-for-dev / backlog derived" --> SS["sprint-status.yaml"]
+    SP["/bmad-sprint-planning"] --> SS
+    SS --> BUILD["/bmad-build story-key<br/>claim guard — halts if blocked or held"]
+    BUILD -- "in-progress → review<br/>discovered-from beads" --> SYNC
+    BUILD --> CR["/bmad-code-review"]
+    CR -- "done ⇒ bead closed<br/>milestone closes ⇒ next epic unblocks" --> SYNC
+    SYNC <--> G
 ```
 
-Every arrow is an `on_complete` line in `_bmad/custom/<skill>.toml` running
+The skill→bridge arrows are `on_complete` lines in `_bmad/custom/<skill>.toml` running
 `scripts/bmad_beads.py`. Run `task status` (or `uv run scripts/bmad_beads.py status`) any time.
+
+### Story lifecycle
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "backlog" as b
+    state "ready-for-dev" as rfd
+    state "in-progress" as ip
+    state "review" as rv
+    state "done" as d
+    [*] --> b : import
+    b --> rfd : sync — blockers closed (bd ready)
+    rfd --> b : sync — a new blocker appeared
+    rfd --> ip : /bmad-build claims the bead
+    ip --> rv : build complete
+    rv --> ip : code-review leaves patches — claim kept
+    rv --> d : code-review passes
+    d --> [*] : sync closes the bead — downstream unblocks
+```
+
+Status only moves forward, with exactly two sanctioned reversals: `ready-for-dev → backlog`
+(a blocker appeared) and `review → in-progress` (code-review sent the story back). Both
+directions are mirrored by `sync`; nothing else ever demotes a story, and a bead is never
+closed by hand.
 
 ## What's in the template
 
@@ -71,7 +97,7 @@ CLAUDE.md                      points at AGENTS.md; project facts go below the l
 _bmad/custom/*.toml            BMAD overrides: dependency convention, claim-on-start, sync-on-complete
 .beads/formulas/bmad-planning.formula.toml   planning phases as a beads molecule
 scripts/bmad_beads.py          the bridge: import | sync | claim | status | doctor  (stdlib only)
-scripts/test_bmad_beads.py     unit tests for the parser and the sprint-status editor
+scripts/test_bmad_beads.py     unit tests for the parser, status mapping, and the sprint-status editor
 scripts/bootstrap.sh           idempotent setup
 Taskfile.yml                   task status | ready | import | sync | doctor | push | pull | plan
 docs/BLUEPRINT.md              the design: ownership, data flow, failure modes, team modes
@@ -95,6 +121,14 @@ See `docs/BLUEPRINT.md` for the full design and the things that will bite you.
 
 ## Status
 
-Built against BMAD Method **6.11.0** and beads **1.2.2** (Aug 2026). The bridge reads only the
-public shapes of `epics.md`, `sprint-status.yaml`, and `bd --json`; when either tool changes
-those, `scripts/test_bmad_beads.py` and `bmad_beads.py doctor` are where it shows first.
+Built against BMAD Method **6.11.0** and beads **1.2.2** (Aug 2026). Validated end-to-end
+Aug 2026 across two full dogfood cycles on a real project — planning → import → claim-guarded
+builds → code-review send-back and pass → milestone cascade (one sync closed an epic and
+unblocked the next two) — with the fixes from round one re-verified under a cold agent in
+round two. The bridge reads only the public shapes of `epics.md`, `sprint-status.yaml`, and
+`bd --json`; when either tool changes those, `scripts/test_bmad_beads.py` and
+`bmad_beads.py doctor` are where it shows first.
+
+## License
+
+[MIT](LICENSE)
