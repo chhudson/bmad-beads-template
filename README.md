@@ -52,7 +52,8 @@ flowchart TB
     EP -- "bmad_beads.py import" --> G[("beads graph<br/>epic + story beads, blocks edges,<br/>epic milestone gates")]
     G -- "bd ready" --> SYNC["bmad_beads.py sync"]
     SYNC -- "ready-for-dev / backlog derived" --> SS["sprint-status.yaml"]
-    SP["/bmad-sprint-planning"] --> SS
+    EP --> SP["/bmad-sprint-planning"]
+    SP --> SS
     SS --> BUILD["/bmad-build story-key<br/>claim guard — halts if blocked or held"]
     BUILD -- "in-progress → review<br/>discovered-from beads" --> SYNC
     BUILD --> CR["/bmad-code-review"]
