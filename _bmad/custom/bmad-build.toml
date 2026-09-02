@@ -8,7 +8,8 @@ activation_steps_append = [
 ]
 
 persistent_facts = [
-  "file:{project-root}/docs/references/*.md",
+  "file:{project-root}/docs/references/README.md",
+  "Vendored library docs are the source of record. docs/references/README.md is the manifest of what is vendored; for any library listed there, grep `docs/references/<tool>/*llms-full.txt` BEFORE writing any API call, binding, config key, limit or CLI flag for it, and follow what you find. Do not load a whole llms-full.txt into context; do not rely on training data or web search for a vendored library. For user-facing copy, apply docs/references/style/anti-ai-slop/README.md.",
   "Work discovered during the build that is out of scope for this story is captured in beads, not in prose: `bd create \"<title>\" -t task --deps discovered-from:<this story bead id> -l discovered` — then keep going. Do not silently widen the story.",
   "Durable project insights (a gotcha, a convention, a decision) go to `bd remember \"<insight>\"` so `bd prime` carries them into the next session.",
   "Discovered beads are TOP-LEVEL, never children of the story: a child bead inherits the parent's labels (including `story`) and pollutes `bd ready --label story`. The `--deps discovered-from:<id>` edge is the link; the hierarchy is not.",

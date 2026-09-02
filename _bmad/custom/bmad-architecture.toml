@@ -10,6 +10,10 @@ activation_steps_append = [
 ]
 
 persistent_facts = [
+  "file:{project-root}/docs/references/README.md",
+  "Vendored library docs are the source of record. docs/references/README.md is the manifest of what is vendored; for any library listed there, grep `docs/references/<tool>/*llms-full.txt` before asserting any API, binding, limit, config key or CLI flag, and cite the heading you found it under. Do not load a whole llms-full.txt into context; do not rely on training data or web search for a vendored library.",
+  # Add the style references this project vendors, e.g.
+  #   "file:{project-root}/docs/references/style/workers-best-practices/SKILL.md",
 ]
 
 on_complete = "bmad-beads bridge: if you claimed a planning bead on activation, `bd close <id> --reason \"artifact complete: <output path>\"`. Record 1-3 durable decisions from this phase with `bd remember \"<decision>\"` so later sessions inherit them."

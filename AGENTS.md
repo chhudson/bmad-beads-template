@@ -24,8 +24,10 @@ for discovered/chore/decision beads, and for stories cut in correct-course (with
 `deferred-work.md` is a pointer list, not a register: every entry starts `bead: <id>` —
 the bead, filed first, carries the substance.
 
-Standards the team has adopted (style guides, coding standards, `llms.txt` snapshots)
-live in `docs/references/` — read the one governing the code you are about to write.
+Standards the team has adopted (style guides, coding standards, `llms-full.txt` snapshots)
+live in `docs/references/`; `docs/references/README.md` is the manifest. Read the standard
+governing the code you are about to write, and grep the vendored `<tool>/*llms-full.txt`
+before asserting an API, config key or limit — it beats training data and search.
 
 ## Session start
 

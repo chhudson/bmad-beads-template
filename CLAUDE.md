@@ -13,6 +13,6 @@ Stack, conventions, commands — fill in per project. Keep `AGENTS.md` generic; 
 
 - Stack:
 - Run / test:
-- Conventions:
+- Conventions: `docs/references/README.md` is the manifest of vendored standards and library docs. `docs/references/<tool>/*llms-full.txt` is the source of record for a vendored library: grep it before asserting an API or config key. Prose is reviewed against `docs/references/style/anti-ai-slop/README.md`.
 
 <!-- `bd setup claude` appends its own "BEADS INTEGRATION" block below; keep it. -->

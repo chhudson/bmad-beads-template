@@ -10,6 +10,7 @@ activation_steps_append = [
 ]
 
 persistent_facts = [
+  "file:{project-root}/docs/references/style/anti-ai-slop/README.md",
 ]
 
 on_complete = "bmad-beads bridge: if you claimed a planning bead on activation, `bd close <id> --reason \"artifact complete: <output path>\"`. Record 1-3 durable decisions from this phase with `bd remember \"<decision>\"` so later sessions inherit them. Then tell the user: the molecule's next step is a HUMAN sign-off gate — they can see it with `bd gate list` and approve it by closing the gate bead (`bd close <gate-id> --reason approved`). Never close a human gate yourself."
