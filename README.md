@@ -102,7 +102,7 @@ scripts/test_bmad_beads.py     unit tests for the parser, status mapping, and th
 scripts/bootstrap.sh           idempotent setup
 Taskfile.yml                   task status | ready | import | sync | doctor | push | pull | plan
 docs/BLUEPRINT.md              the design: ownership, data flow, failure modes, team modes
-docs/references/               static copies of standards the team adopts (styles, llms.txt)
+docs/references/               vendored standards + library docs; README.md is the manifest (anti-AI-slop shipped)
 .github/workflows/bmad-beads-bridge.yml      CI for the BRIDGE only — add your project's own workflow
 ```
 
