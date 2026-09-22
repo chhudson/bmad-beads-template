@@ -77,12 +77,16 @@ Order of operations inside one run:
 
 1. BMAD → beads. For each story row: `in-progress → in_progress`, `review → review` (a beads
    custom status, `status.custom review:wip`, so it is visible but not claimable), `done → closed`.
-   Only forward moves.
+   Only forward moves. A bead in `blocked` or `deferred` is left where it is: beads owns those
+   statuses (build-auto sets `blocked` when a spec stalls), so a yaml row still reading
+   `in-progress` does not flip it back. Only `done` in yaml moves it, to `closed`.
 2. Milestones and epic beads close when every story of the epic is closed.
 3. `bd ready --type task --label story` is read **after** step 2, so a freshly unblocked epic is
    visible in the same run.
 4. beads → BMAD. `closed → done`, `in_progress → in-progress` (someone claimed it in beads),
    `review → review`; and for `open` beads, `backlog ↔ ready-for-dev` from readiness.
+   `blocked` / `deferred` beads write nothing: the yaml row keeps whatever BMAD last set, and
+   `status` shows the bead's own status beside it.
 5. Epic rows: `backlog → in-progress` when any story has started (BMAD's own lift rule);
    `→ done` when all stories are done (BMAD's own STATUS DEFINITIONS).
 6. `tracking_system: beads`, `last_updated` refreshed; file written atomically, comments and
