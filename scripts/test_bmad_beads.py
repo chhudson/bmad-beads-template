@@ -390,6 +390,23 @@ class SyncCommandTests(CommandTestCase):
         self.assertEqual(self.yaml()["epic-1"], "in-progress")
         self.assertEqual(self.yaml()["epic-1-retrospective"], "optional")
 
+    def test_blocked_and_deferred_beads_are_left_alone(self):
+        # #21: build-auto marks a bead `blocked`; the yaml row still reads in-progress.
+        a = self.bd.story("1-1-a", 1, status="blocked", assignee="me")
+        b = self.bd.story("1-2-b", 1, status="deferred")
+        self.write(e1="in-progress", s11="in-progress", s12="ready-for-dev")
+        self.sync()
+        self.assertEqual(self.bd.calls, [])
+        self.assertEqual((self.bd.issues[a]["status"], self.bd.issues[b]["status"]), ("blocked", "deferred"))
+        self.assertEqual(self.yaml()["1-1-a"], "in-progress")
+
+    def test_done_still_closes_a_blocked_bead(self):
+        a = self.bd.story("1-1-a", 1, status="blocked")
+        self.bd.story("1-2-b", 1)
+        self.write(s11="done")
+        self.sync()
+        self.assertEqual(self.bd.issues[a]["status"], "closed")
+
     def test_dry_run_writes_nothing(self):
         self.bd.story("1-1-a", 1)
         self.bd.story("1-2-b", 1)

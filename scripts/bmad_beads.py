@@ -63,6 +63,9 @@ BMAD_RANK = {"backlog": 0, "ready-for-dev": 1, "in-progress": 2, "review": 3, "d
 # BMAD → beads status. `review` is a custom beads status (bootstrap sets `status.custom review:wip`).
 BMAD_TO_BD = {"in-progress": "in_progress", "review": "review", "done": "closed"}
 BD_RANK = {"open": 0, "in_progress": 2, "review": 3, "closed": 4}
+# Statuses beads owns outright: set by hand or by build-auto's on_complete, and with no BMAD
+# equivalent. sync never moves a bead out of one, except that `done` in yaml still closes it.
+BD_HELD = {"blocked", "deferred"}
 
 META_STORY_KEY = "bmad_story_key"
 META_EPIC_KEY = "bmad_epic_key"
@@ -610,6 +613,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
             continue
         target = BMAD_TO_BD.get(yaml_status)
         bstat = issue.get("status", "open")
+        if bstat in BD_HELD and target != "closed":
+            continue
         if target and BD_RANK.get(bstat, 0) < BD_RANK[target]:
             if target == "closed":
                 bd.close(issue["id"], f"BMAD sprint-status: {key} done")
