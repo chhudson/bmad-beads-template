@@ -371,6 +371,10 @@ class FakeBD:
         if self._mutate("close", issue_id, reason):
             self.issues[issue_id]["status"] = "closed"
 
+    def reopen(self, issue_id: str, reason: str) -> None:
+        if self._mutate("reopen", issue_id, reason):
+            self.issues[issue_id]["status"] = "open"
+
     def dep_add(self, dependent: str, blocker: str) -> None:
         if self._mutate("dep_add", dependent, blocker):
             self.issues[dependent]["dependencies"].append({"depends_on_id": blocker, "type": "blocks"})
@@ -479,6 +483,14 @@ class SyncCommandTests(CommandTestCase):
         self.sync()
         self.assertEqual(self.bd.issues[a]["status"], "closed")
 
+    def test_epic_row_reopens_when_a_story_is_added(self):
+        # #23: epic-1 was done; correct-course added 1-2-b and sprint-planning gave it a row.
+        self.bd.story("1-1-a", 1, status="closed")
+        self.bd.story("1-2-b", 1)
+        self.write(e1="done", s11="done", s12="backlog")
+        self.sync()
+        self.assertEqual(self.yaml()["epic-1"], "in-progress")
+
     def test_dry_run_writes_nothing(self):
         self.bd.story("1-1-a", 1)
         self.bd.story("1-2-b", 1)
@@ -511,7 +523,7 @@ As an analyst.
 """
 
 
-class ImportCommandTests(CommandTestCase):
+class ImportCase(CommandTestCase):
     def setUp(self):
         super().setUp()
         self.epics = self.root / "epics.md"
@@ -526,6 +538,8 @@ class ImportCommandTests(CommandTestCase):
     def blockers(self, title: str) -> set[str]:
         return {self.bd.issues[d["depends_on_id"]]["title"] for d in self.by_title(title)["dependencies"]}
 
+
+class ImportCommandTests(ImportCase):
     def test_first_import(self):
         self.assertEqual(self.imp(), 0)
         self.assertEqual(len(self.bd.mutations("create")), 6)  # 2 epics, 3 stories, 1 milestone
@@ -564,6 +578,32 @@ class ImportCommandTests(CommandTestCase):
         self.imp()
         self.assertEqual(self.blockers("Epic 1 complete"), {"Story 1.1: Schema exists", "Story 1.2: Seed data"})
         self.assertEqual(self.blockers("Story 2.1: Read endpoint"), {"Epic 1 complete"})
+
+
+class ImportReopenTests(ImportCase):
+    """#23: a story added to a finished epic re-blocks the epics that depend on it."""
+
+    def test_new_story_reopens_milestone_and_epic(self):
+        self.imp()
+        for t in ("Story 1.1: Schema exists", "Story 1.2: Seed data", "Epic 1 complete", "Epic 1: Foundations"):
+            self.bd.issues[self.by_title(t)["id"]]["status"] = "closed"
+        self.assertIn(self.by_title("Story 2.1: Read endpoint")["id"], self.bd.ready_ids())
+        self.bd.calls.clear()
+        self.epics.write_text(IMPORT_EPICS.replace("## Epic 2", "### Story 1.3: Late addition\n\nAs a dev.\n\n## Epic 2"),
+                              encoding="utf-8")
+        self.assertEqual(self.imp(), 0)
+        self.assertEqual({c[1] for c in self.bd.mutations("reopen")},
+                         {self.by_title("Epic 1 complete")["id"], self.by_title("Epic 1: Foundations")["id"]})
+        self.assertIn("Story 1.3: Late addition", self.blockers("Epic 1 complete"))
+        self.assertNotIn(self.by_title("Story 2.1: Read endpoint")["id"], self.bd.ready_ids())
+        self.assertIn("Epic 1 reopened", self.out.getvalue())
+
+    def test_no_reopen_without_a_new_story(self):
+        self.imp()
+        self.bd.issues[self.by_title("Epic 1 complete")["id"]]["status"] = "closed"
+        self.bd.calls.clear()
+        self.imp()
+        self.assertEqual(self.bd.mutations("reopen"), [])
 
 
 class ImportEdgeCaseTests(CommandTestCase):
