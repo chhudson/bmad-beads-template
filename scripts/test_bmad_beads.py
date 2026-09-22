@@ -223,10 +223,10 @@ class RankTests(unittest.TestCase):
 # FakeBD: an in-memory stand-in for the `BD` wrapper, so the commands run without a `bd` binary.
 # ----------------------------------------------------------------------------
 class FakeBD:
-    def __init__(self, fail_list: set[str] | None = None):
+    def __init__(self):
         self.issues: dict[str, dict] = {}
         self.calls: list[tuple] = []  # every mutation that reached the store
-        self.fail_list = fail_list or set()  # statuses whose `list` raises
+        self.fail_list: dict[str, str] = {}  # status -> error text its `list` raises
         self.dry_run = False
         self.actor = "me"
         self._n = 0
@@ -260,7 +260,7 @@ class FakeBD:
     # --- the BD interface ---
     def list(self, status: str) -> list[dict]:
         if status in self.fail_list:
-            raise RuntimeError(f"bd list --status {status} failed: database is locked")
+            raise RuntimeError(f"bd list --status {status} failed: {self.fail_list[status]}")
         return [json.loads(json.dumps(i)) for i in self.issues.values() if i["status"] == status]
 
     def ready_ids(self) -> set[str]:
@@ -456,6 +456,20 @@ class ImportCommandTests(CommandTestCase):
         self.imp()
         self.assertEqual(self.bd.calls, [("update", self.by_title("Story 1.1: Schema Exists!")["id"],
                                           {"title": "Story 1.1: Schema Exists!"})])
+
+    def test_failed_list_aborts_before_creating(self):
+        # #20: a failing `bd list --status open` used to be swallowed, so every open story
+        # looked new and was created again.
+        self.imp()
+        self.bd.calls.clear()
+        self.bd.fail_list["open"] = "Error: database is locked"
+        self.assertEqual(self.imp(), 1)
+        self.assertIn("database is locked", self.err.getvalue())
+        self.assertEqual(self.bd.calls, [])
+
+    def test_unconfigured_review_status_tolerated(self):
+        self.bd.fail_list["review"] = 'Error: invalid status "review" (valid: open, in_progress, blocked, deferred, closed)'
+        self.assertEqual(self.imp(), 0)
 
     def test_epic_dependency_goes_through_milestone(self):
         self.imp()

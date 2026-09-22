@@ -384,15 +384,23 @@ class Index:
     statuses: dict[str, str]  # every bead id -> status (for blocker display)
 
 
+def list_status(bd: BD, status: str) -> list[dict]:
+    """`bd list --status <status>`, tolerating exactly one failure: `review` on a clone where the
+    custom status is not configured yet (doctor reports that). Anything else — a locked Dolt
+    database, say — must propagate: a silently partial index makes `import` create duplicates."""
+    try:
+        return bd.list(status=status)
+    except RuntimeError as ex:
+        if status == "review" and "invalid status" in str(ex):
+            return []
+        raise
+
+
 def load_index(bd: BD) -> Index:
     stories, epics, gates, statuses = {}, {}, {}, {}
     seen = set()
     for status in ("open", "in_progress", "blocked", "deferred", "review", "closed"):
-        try:
-            issues = bd.list(status=status)
-        except RuntimeError:
-            continue  # e.g. `review` not configured yet
-        for issue in issues:
+        for issue in list_status(bd, status):
             if issue["id"] in seen:
                 continue
             seen.add(issue["id"])
@@ -843,12 +851,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         # top-level beads linked with --deps discovered-from:<story>.
         mislabelled = []
         for status in ("open", "in_progress", "blocked", "review"):
-            try:
-                for i in bd.list(status=status) or []:
-                    if LABEL_STORY in (i.get("labels") or []) and not (i.get("metadata") or {}).get(META_STORY_KEY):
-                        mislabelled.append(i["id"])
-            except RuntimeError:
-                pass
+            for i in list_status(bd, status):
+                if LABEL_STORY in (i.get("labels") or []) and not (i.get("metadata") or {}).get(META_STORY_KEY):
+                    mislabelled.append(i["id"])
         if mislabelled:
             warn(f"beads carry the `story` label but no bmad_story_key (child beads inherit labels; recreate as top-level with --deps discovered-from): {', '.join(sorted(set(mislabelled))[:5])}")
         entries = {k: v for k, v in ss.entries().items() if not k.startswith("epic-")}
