@@ -54,7 +54,9 @@ FENCE_RE = re.compile(r"^\s{0,3}(?:```|~~~)")
 # Our own convention (taught to the PM agent via persistent_facts):
 #   **Depends on:** 1.3, 2.1        (story-level)
 #   **Depends on:** Epic 1          (epic-level)
-DEPENDS_RE = re.compile(r"^\**\s*(?:Depends on|Blocked by)\s*:?\**\s*(.+?)\s*$", re.IGNORECASE)
+# The colon is required (inside or after the bold), so prose like "Blocked by 1.1 legal review" is not a dependency.
+DEPENDS_RE = re.compile(r"^\**\s*(?:Depends on|Blocked by)\s*\**\s*:\**\s*(.+?)\s*$", re.IGNORECASE)
+ACCEPTANCE_RE = re.compile(r"^(?:#{1,6}\s*|\**\s*)Acceptance Criteria", re.IGNORECASE)
 STORY_REF_RE = re.compile(r"\b(\d+)\.(\d+[a-z]?)\b")
 EPIC_REF_RE = re.compile(r"\bEpic\s+(\d+)\b", re.IGNORECASE)
 
@@ -203,6 +205,7 @@ class Story:
     title: str
     body: list[str] = field(default_factory=list)
     depends: list[str] = field(default_factory=list)  # "1.3" style refs
+    epic_depends: list[int] = field(default_factory=list)  # `Depends on: Epic K` written under the story
 
     @property
     def key(self) -> str:
@@ -216,7 +219,7 @@ class Story:
         """The 'As a / I want / So that' block (everything before Acceptance Criteria)."""
         out = []
         for line in self.body:
-            if re.match(r"^\**\s*Acceptance Criteria", line, re.IGNORECASE):
+            if ACCEPTANCE_RE.match(line):
                 break
             if DEPENDS_RE.match(line):
                 continue
@@ -226,7 +229,7 @@ class Story:
     def acceptance(self) -> str:
         out, on = [], False
         for line in self.body:
-            if re.match(r"^\**\s*Acceptance Criteria", line, re.IGNORECASE):
+            if ACCEPTANCE_RE.match(line):
                 on = True
                 continue
             if on:
@@ -245,6 +248,10 @@ class Epic:
     @property
     def key(self) -> str:
         return f"epic-{self.num}"
+
+
+def _extend_unique(dst: list, items: list) -> None:
+    dst.extend(x for x in dict.fromkeys(items) if x not in dst)
 
 
 def parse_epics(path: Path) -> list[Epic]:
@@ -290,10 +297,12 @@ def parse_epics(path: Path) -> list[Epic]:
         dm = DEPENDS_RE.match(line)
         if dm:
             refs = dm.group(1)
+            epic_refs = [int(x) for x in EPIC_REF_RE.findall(refs)]
             if cur_story is not None:
-                cur_story.depends += [f"{a}.{b}" for a, b in STORY_REF_RE.findall(refs)]
+                _extend_unique(cur_story.depends, [f"{a}.{b}" for a, b in STORY_REF_RE.findall(refs)])
+                _extend_unique(cur_story.epic_depends, epic_refs)
             elif cur_epic is not None:
-                cur_epic.depends += [int(x) for x in EPIC_REF_RE.findall(refs)]
+                _extend_unique(cur_epic.depends, epic_refs)
         if cur_story is not None:
             cur_story.body.append(line)
         elif cur_epic is not None and line.strip() and not in_list and not dm:
@@ -507,6 +516,22 @@ def cmd_import(args: argparse.Namespace) -> int:
     # Dependencies: explicit `Depends on:` lines, optional sequential fallback.
     by_ref = {s.ref: s for e in epics for s in e.stories}
     wanted: list[tuple[str, str, str]] = []  # (dependent_id, blocker_id, why)
+    gated: set[int] = set()
+
+    def _gate_for(en: int, unknown: str) -> str | None:
+        # beads rule: tasks can only block tasks. So a dependency on an epic goes through a
+        # milestone task "Epic N complete" (blocked by every story of N); `sync` closes it.
+        prior = next((x for x in epics if x.num == en), None)
+        if prior is None or en not in epic_ids:
+            print(f"  ! {unknown} — skipped")
+            return None
+        gate_id = _ensure_gate(bd, idx, prior, epic_ids[en], args.priority)
+        if en not in gated:
+            gated.add(en)
+            for s in prior.stories:
+                wanted.append((gate_id, story_ids[s.key], f"Epic {en} gate waits on {s.ref}"))
+        return gate_id
+
     for e in epics:
         prev: Story | None = None
         for s in e.stories:
@@ -515,21 +540,18 @@ def cmd_import(args: argparse.Namespace) -> int:
                     wanted.append((story_ids[s.key], story_ids[by_ref[ref].key], f"{s.ref} depends on {ref}"))
                 else:
                     print(f"  ! {s.ref} depends on unknown story {ref} — skipped")
-            if args.deps == "sequential" and prev is not None and not s.depends:
+            if args.deps == "sequential" and prev is not None and not s.depends and not s.epic_depends:
                 wanted.append((story_ids[s.key], story_ids[prev.key], f"{s.ref} follows {prev.ref} (sequential)"))
             prev = s
+            for en in s.epic_depends:
+                gate_id = _gate_for(en, f"{s.ref} depends on unknown Epic {en}")
+                if gate_id:
+                    wanted.append((story_ids[s.key], gate_id, f"{s.ref} depends on Epic {en}"))
         for en in e.depends:
-            prior = next((x for x in epics if x.num == en), None)
-            if prior is None or en not in epic_ids:
-                print(f"  ! Epic {e.num} depends on unknown Epic {en} — skipped")
-                continue
-            # beads rule: tasks can only block tasks. So an epic-level dependency goes through a
-            # milestone task "Epic N complete" (blocked by every story of N); `sync` closes it.
-            gate_id = _ensure_gate(bd, idx, prior, epic_ids[en], args.priority)
-            for s in prior.stories:
-                wanted.append((gate_id, story_ids[s.key], f"Epic {en} gate waits on {s.ref}"))
-            for s in e.stories:
-                wanted.append((story_ids[s.key], gate_id, f"Epic {e.num} depends on Epic {en}"))
+            gate_id = _gate_for(en, f"Epic {e.num} depends on unknown Epic {en}")
+            if gate_id:
+                for s in e.stories:
+                    wanted.append((story_ids[s.key], gate_id, f"Epic {e.num} depends on Epic {en}"))
     # existing deps (avoid duplicate adds)
     have: set[tuple[str, str]] = set()
     for issue in [*idx.stories.values(), *idx.gates.values()]:
@@ -539,6 +561,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     for dep, blocker, why in wanted:
         if (dep, blocker) in have or dep == blocker:
             continue
+        have.add((dep, blocker))
         try:
             bd.dep_add(dep, blocker)
             deps += 1

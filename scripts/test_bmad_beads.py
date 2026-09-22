@@ -148,6 +148,78 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(len(bb._slug("x" * 100)), 60)
 
 
+EDGE_EPICS = """## Epic List
+
+### Epic 1: A
+### Epic 2: B
+**Depends on:** Epic 1
+
+## Epic 1: A
+
+### Story 1.1: One
+
+As a dev.
+
+#### Acceptance Criteria
+
+**Given** x **Then** y
+
+### Story 1.2: Two
+
+Blocked by 1.1 legal review of v1.1 wording
+
+## Epic 2: B
+
+**Depends on:** Epic 1
+
+### Story 2.1: Three
+
+**Depends on**: Epic 1, 1.2, 1.2
+
+## Epic 3: C
+
+**Depends on:** Epic 1
+
+### Story 3.1: Four
+
+## Epic 4: D
+
+### Story 4.1: Five
+
+**Depends on:** Epic 1
+"""
+
+
+class ParserEdgeCaseTests(unittest.TestCase):
+    """#22."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        path = Path(self.tmp.name) / "epics.md"
+        path.write_text(EDGE_EPICS, encoding="utf-8")
+        self.epics = {e.num: e for e in bb.parse_epics(path)}
+        self.stories = {s.ref: s for e in self.epics.values() for s in e.stories}
+
+    def test_story_level_epic_dependency_kept(self):
+        self.assertEqual(self.stories["2.1"].epic_depends, [1])
+
+    def test_colon_required(self):
+        self.assertEqual(self.stories["1.2"].depends, [])
+        self.assertIn("Blocked by 1.1 legal review", self.stories["1.2"].description())
+
+    def test_colon_after_bold_accepted_and_deduplicated(self):
+        self.assertEqual(self.stories["2.1"].depends, ["1.2"])
+
+    def test_epic_dependency_deduplicated(self):
+        self.assertEqual(self.epics[2].depends, [1])  # Epic List summary + epic body
+
+    def test_acceptance_criteria_heading(self):
+        s = self.stories["1.1"]
+        self.assertEqual(s.acceptance(), "**Given** x **Then** y")
+        self.assertEqual(s.description(), "As a dev.")
+
+
 class SprintStatusTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -492,6 +564,26 @@ class ImportCommandTests(CommandTestCase):
         self.imp()
         self.assertEqual(self.blockers("Epic 1 complete"), {"Story 1.1: Schema exists", "Story 1.2: Seed data"})
         self.assertEqual(self.blockers("Story 2.1: Read endpoint"), {"Epic 1 complete"})
+
+
+class ImportEdgeCaseTests(CommandTestCase):
+    def setUp(self):
+        super().setUp()
+        self.epics = self.root / "epics.md"
+        self.epics.write_text(EDGE_EPICS, encoding="utf-8")
+        self.assertEqual(self.main("import", "--epics", str(self.epics)), 0)
+        self.ids = {i["title"]: i["id"] for i in self.bd.issues.values()}
+
+    def test_no_edge_added_twice(self):
+        edges = self.bd.mutations("dep_add")
+        self.assertEqual(len(edges), len(set(edges)))
+
+    def test_story_level_epic_dependency_goes_through_milestone(self):
+        gate = self.ids["Epic 1 complete"]
+        self.assertIn(("dep_add", self.ids["Story 2.1: Three"], gate), self.bd.calls)
+        self.assertIn(("dep_add", self.ids["Story 3.1: Four"], gate), self.bd.calls)
+        self.assertIn(("dep_add", self.ids["Story 4.1: Five"], gate), self.bd.calls)  # story-level only
+        self.assertIn(("dep_add", gate, self.ids["Story 1.1: One"]), self.bd.calls)
 
 
 class ClaimCommandTests(CommandTestCase):
