@@ -61,6 +61,13 @@ Two rules make the sync trivially safe:
 | `### Story N.M: Title` | child `type=task` under the epic (hierarchical id `prefix-xxxx.M`), labels `story, epic-N`, description = *As a / I want / So that*, `acceptance_criteria` = the Given/When/Then block, metadata `{bmad_story_key: "N-M-slug", bmad_ref: "N.M"}` |
 | `**Depends on:** A.B, C.D` under a story | `bd dep add <story> <A.B>` (type `blocks`) |
 | `**Depends on:** Epic K` under an epic | a milestone task **"Epic K complete"** (label `epic-gate`, metadata `bmad_epic_gate`) blocked by every story of K; every story of this epic is blocked by the milestone. (beads only lets tasks block tasks — an epic cannot be a blocker.) `sync` closes the milestone when K's stories are all closed. |
+| `**Depends on:** Epic K` under a story | that story alone is blocked by the "Epic K complete" milestone |
+
+The colon is required (`**Depends on:**` or `**Depends on**:`; `Blocked by:` works too), so a
+prose line such as "Blocked by 1.1 legal review" is not read as a dependency. Repeated refs, and an
+epic dependency written in both the `## Epic List` summary and the epic body, produce one edge.
+Acceptance criteria start at `**Acceptance Criteria:**` or at an `Acceptance Criteria` heading of
+any level.
 
 The story key uses BMAD's exact slug rule (`sprint_plan.py::_slug`: lowercase, `\W+ → -`,
 60 chars), so `sprint-status.yaml` keys and bead metadata line up byte-for-byte. Matching on
