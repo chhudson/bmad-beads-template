@@ -27,7 +27,7 @@ tasks:
     cmds: [uv run --quiet scripts/bmad_beads.py doctor]
 
   test:
-    desc: Bridge unit tests (parser, sprint-status editor)
+    desc: Bridge tests (parser, sprint-status editor, and import/sync/claim against a fake bd)
     cmds: [uv run --quiet scripts/test_bmad_beads.py]
 
   push:
