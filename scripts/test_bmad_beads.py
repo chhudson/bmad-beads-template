@@ -3,13 +3,18 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Unit tests for the pure parts of the bridge (no `bd` required). Run: uv run scripts/test_bmad_beads.py"""
+"""Unit tests for the bridge (no `bd` required: commands run against an in-memory FakeBD).
+Run: uv run scripts/test_bmad_beads.py"""
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parent))
 import bmad_beads as bb  # noqa: E402
@@ -212,6 +217,296 @@ class RankTests(unittest.TestCase):
         self.assertLess(bb.BMAD_RANK["ready-for-dev"], bb.BMAD_RANK["in-progress"])
         self.assertEqual(bb.BMAD_TO_BD["done"], "closed")
         self.assertIsNone(bb.BMAD_RANK.get("awaiting-operator"))  # unknown → pass-through
+
+
+# ----------------------------------------------------------------------------
+# FakeBD: an in-memory stand-in for the `BD` wrapper, so the commands run without a `bd` binary.
+# ----------------------------------------------------------------------------
+class FakeBD:
+    def __init__(self, fail_list: set[str] | None = None):
+        self.issues: dict[str, dict] = {}
+        self.calls: list[tuple] = []  # every mutation that reached the store
+        self.fail_list = fail_list or set()  # statuses whose `list` raises
+        self.dry_run = False
+        self.actor = "me"
+        self._n = 0
+
+    # --- test setup helpers ---
+    def add(self, title: str, status: str = "open", type: str = "task", labels=(), metadata=None,
+            assignee: str = "", blocked_by=()) -> str:
+        self._n += 1
+        iid = f"bd-{self._n}"
+        self.issues[iid] = {"id": iid, "title": title, "status": status, "issue_type": type,
+                            "labels": list(labels), "metadata": metadata or {}, "assignee": assignee,
+                            "dependencies": [{"depends_on_id": b, "type": "blocks"} for b in blocked_by]}
+        return iid
+
+    def story(self, key: str, epic: int, **kw) -> str:
+        ref = ".".join(key.split("-")[:2])
+        return self.add(f"Story {ref}: {key}", labels=[bb.LABEL_STORY, f"epic-{epic}"],
+                        metadata={bb.META_STORY_KEY: key, "bmad_epic": epic}, **kw)
+
+    def epic(self, num: int, **kw) -> str:
+        return self.add(f"Epic {num}: E{num}", type="epic", labels=[bb.LABEL_EPIC, f"epic-{num}"],
+                        metadata={bb.META_EPIC_KEY: f"epic-{num}", "bmad_epic": num}, **kw)
+
+    def gate(self, num: int, blocked_by=(), **kw) -> str:
+        return self.add(f"Epic {num} complete", labels=["epic-gate", f"epic-{num}"],
+                        metadata={bb.META_GATE_KEY: f"epic-{num}", "bmad_epic": num}, blocked_by=blocked_by, **kw)
+
+    def mutations(self, verb: str) -> list[tuple]:
+        return [c for c in self.calls if c[0] == verb]
+
+    # --- the BD interface ---
+    def list(self, status: str) -> list[dict]:
+        if status in self.fail_list:
+            raise RuntimeError(f"bd list --status {status} failed: database is locked")
+        return [json.loads(json.dumps(i)) for i in self.issues.values() if i["status"] == status]
+
+    def ready_ids(self) -> set[str]:
+        return {i["id"] for i in self.issues.values()
+                if i["status"] == "open" and i["issue_type"] == "task" and bb.LABEL_STORY in i["labels"]
+                and all(self.issues.get(d["depends_on_id"], {}).get("status") == "closed" for d in i["dependencies"])}
+
+    def show(self, issue_id: str) -> dict | None:
+        return self.issues.get(issue_id)
+
+    def run(self, *args, **kw):
+        return ""
+
+    def _mutate(self, *call) -> bool:
+        self.calls.append(call)
+        return not self.dry_run
+
+    def create(self, title: str, **kw) -> str | None:
+        if not self._mutate("create", title, kw):
+            return None
+        iid = self.add(title, type=kw.get("type", "task"), labels=[x for x in kw.get("labels", "").split(",") if x],
+                       metadata=json.loads(kw.get("metadata") or "{}"))
+        return iid
+
+    def update(self, issue_id: str, **kw) -> None:
+        if not self._mutate("update", issue_id, kw):
+            return
+        i = self.issues[issue_id]
+        if "claim" in kw:
+            i["assignee"], i["status"] = self.actor, "in_progress"
+        for k in ("status", "title", "assignee"):
+            if k in kw:
+                i[k] = kw[k]
+
+    def close(self, issue_id: str, reason: str) -> None:
+        if self._mutate("close", issue_id, reason):
+            self.issues[issue_id]["status"] = "closed"
+
+    def dep_add(self, dependent: str, blocker: str) -> None:
+        if self._mutate("dep_add", dependent, blocker):
+            self.issues[dependent]["dependencies"].append({"depends_on_id": blocker, "type": "blocks"})
+
+
+class CommandTestCase(unittest.TestCase):
+    """Runs `bb.main([...])` against a FakeBD in a temp project root."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.bd = FakeBD()
+        def factory(cwd, dry_run=False, verbose=False):
+            self.bd.dry_run = dry_run
+            return self.bd
+        patches = [mock.patch.object(bb, "BD", factory), mock.patch.object(bb, "project_root", lambda: self.root)]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.addCleanup(self.tmp.cleanup)
+
+    def main(self, *argv: str) -> int:
+        self.out, self.err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(self.out), contextlib.redirect_stderr(self.err):
+            return bb.main(list(argv))
+
+
+SYNC_YAML = """development_status:
+  epic-1: {e1}
+  1-1-a: {s11}
+  1-2-b: {s12}
+  epic-1-retrospective: optional
+"""
+
+
+class SyncCommandTests(CommandTestCase):
+    def write(self, e1="backlog", s11="backlog", s12="backlog") -> Path:
+        p = self.root / "sprint-status.yaml"
+        p.write_text(SYNC_YAML.format(e1=e1, s11=s11, s12=s12), encoding="utf-8")
+        return p
+
+    def sync(self, *extra: str) -> int:
+        return self.main("sync", "--status-file", str(self.root / "sprint-status.yaml"), *extra)
+
+    def yaml(self) -> dict[str, str]:
+        return bb.SprintStatus(self.root / "sprint-status.yaml").entries()
+
+    def test_forward_moves_bmad_to_beads(self):
+        a = self.bd.story("1-1-a", 1)
+        b = self.bd.story("1-2-b", 1)
+        self.write(e1="in-progress", s11="done", s12="in-progress")
+        self.assertEqual(self.sync(), 0)
+        self.assertEqual(self.bd.issues[a]["status"], "closed")
+        self.assertEqual(self.bd.issues[b]["status"], "in_progress")
+
+    def test_forward_moves_beads_to_bmad(self):
+        self.bd.story("1-1-a", 1)
+        self.bd.story("1-2-b", 1, status="in_progress")
+        self.write()
+        self.sync()
+        self.assertEqual(self.yaml()["1-1-a"], "ready-for-dev")
+        self.assertEqual(self.yaml()["1-2-b"], "in-progress")
+
+    def test_review_send_back(self):
+        a = self.bd.story("1-1-a", 1, status="review", assignee="me")
+        self.bd.story("1-2-b", 1)
+        self.write(e1="in-progress", s11="in-progress")
+        self.sync()
+        self.assertEqual(self.bd.issues[a]["status"], "in_progress")
+        self.assertEqual(self.yaml()["1-1-a"], "in-progress")
+
+    def test_epic_milestone_and_epic_bead_close(self):
+        e = self.bd.epic(1)
+        a = self.bd.story("1-1-a", 1, status="closed")
+        b = self.bd.story("1-2-b", 1, status="review")
+        g = self.bd.gate(1, blocked_by=(a, b))
+        self.write(e1="in-progress", s11="done", s12="done")
+        self.sync()
+        self.assertEqual(self.bd.issues[b]["status"], "closed")
+        self.assertEqual(self.bd.issues[g]["status"], "closed")
+        self.assertEqual(self.bd.issues[e]["status"], "closed")
+        self.assertEqual(self.yaml()["epic-1"], "done")
+
+    def test_epic_row_lifts_to_in_progress(self):
+        self.bd.story("1-1-a", 1, status="in_progress")
+        self.bd.story("1-2-b", 1)
+        self.write()
+        self.sync()
+        self.assertEqual(self.yaml()["epic-1"], "in-progress")
+        self.assertEqual(self.yaml()["epic-1-retrospective"], "optional")
+
+    def test_dry_run_writes_nothing(self):
+        self.bd.story("1-1-a", 1)
+        self.bd.story("1-2-b", 1)
+        p = self.write(s12="done")
+        before = p.read_text(encoding="utf-8")
+        self.assertEqual(self.sync("--dry-run"), 0)
+        self.assertEqual(p.read_text(encoding="utf-8"), before)
+        self.assertTrue(all(i["status"] == "open" for i in self.bd.issues.values()))
+
+
+IMPORT_EPICS = """## Epic 1: Foundations
+
+### Story 1.1: Schema exists
+
+As a dev.
+
+### Story 1.2: Seed data
+
+**Depends on:** 1.1
+
+As a dev.
+
+## Epic 2: Serving
+
+**Depends on:** Epic 1
+
+### Story 2.1: Read endpoint
+
+As an analyst.
+"""
+
+
+class ImportCommandTests(CommandTestCase):
+    def setUp(self):
+        super().setUp()
+        self.epics = self.root / "epics.md"
+        self.epics.write_text(IMPORT_EPICS, encoding="utf-8")
+
+    def imp(self) -> int:
+        return self.main("import", "--epics", str(self.epics))
+
+    def by_title(self, title: str) -> dict:
+        return next(i for i in self.bd.issues.values() if i["title"] == title)
+
+    def blockers(self, title: str) -> set[str]:
+        return {self.bd.issues[d["depends_on_id"]]["title"] for d in self.by_title(title)["dependencies"]}
+
+    def test_first_import(self):
+        self.assertEqual(self.imp(), 0)
+        self.assertEqual(len(self.bd.mutations("create")), 6)  # 2 epics, 3 stories, 1 milestone
+        self.assertEqual(self.blockers("Story 1.2: Seed data"), {"Story 1.1: Schema exists"})
+
+    def test_rerun_is_idempotent(self):
+        self.imp()
+        self.bd.calls.clear()
+        self.assertEqual(self.imp(), 0)
+        self.assertEqual(self.bd.calls, [])
+
+    def test_retitle_updates_title_only(self):
+        self.imp()
+        self.bd.calls.clear()
+        # Same slug (so same story key), different title text.
+        self.epics.write_text(IMPORT_EPICS.replace("Schema exists", "Schema Exists!"), encoding="utf-8")
+        self.imp()
+        self.assertEqual(self.bd.calls, [("update", self.by_title("Story 1.1: Schema Exists!")["id"],
+                                          {"title": "Story 1.1: Schema Exists!"})])
+
+    def test_epic_dependency_goes_through_milestone(self):
+        self.imp()
+        self.assertEqual(self.blockers("Epic 1 complete"), {"Story 1.1: Schema exists", "Story 1.2: Seed data"})
+        self.assertEqual(self.blockers("Story 2.1: Read endpoint"), {"Epic 1 complete"})
+
+
+class ClaimCommandTests(CommandTestCase):
+    def claim(self, key: str = "1-1-a", *extra: str) -> int:
+        return self.main("claim", key, "--actor", "me", *extra)
+
+    def test_unknown_key_refused(self):
+        self.assertEqual(self.claim("9-9-nope"), 1)
+
+    def test_closed_refused(self):
+        self.bd.story("1-1-a", 1, status="closed")
+        self.assertEqual(self.claim(), 1)
+        self.assertIn("already closed", self.err.getvalue())
+
+    def test_held_by_another_refused(self):
+        self.bd.story("1-1-a", 1, status="in_progress", assignee="them")
+        self.assertEqual(self.claim(), 1)
+        self.assertIn("'them'", self.err.getvalue())
+
+    def test_review_refused(self):
+        self.bd.story("1-1-a", 1, status="review")
+        self.assertEqual(self.claim(), 1)
+        self.assertIn("in review", self.err.getvalue())
+
+    def test_blocked_refused(self):
+        self.bd.story("1-1-a", 1, status="blocked")
+        self.assertEqual(self.claim(), 1)
+        self.assertIn("marked blocked", self.err.getvalue())
+
+    def test_not_ready_refused(self):
+        blocker = self.bd.story("1-0-z", 1)
+        self.bd.story("1-1-a", 1, blocked_by=(blocker,))
+        self.assertEqual(self.claim(), 1)
+        self.assertIn("NOT ready", self.err.getvalue())
+        self.assertEqual(self.bd.calls, [])
+
+    def test_ready_and_unclaimed_is_claimed(self):
+        a = self.bd.story("1-1-a", 1)
+        self.assertEqual(self.claim(), 0)
+        self.assertEqual(self.bd.mutations("update"), [("update", a, {"claim": ""})])
+        self.assertEqual(self.bd.issues[a]["assignee"], "me")
+
+    def test_resume_own_claim(self):
+        self.bd.story("1-1-a", 1, status="in_progress", assignee="me")
+        self.assertEqual(self.claim(), 0)
+        self.assertIn("resuming", self.out.getvalue())
 
 
 if __name__ == "__main__":
