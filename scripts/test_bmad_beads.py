@@ -328,6 +328,18 @@ class OverrideTests(unittest.TestCase):
             self.assertIn(step, on_complete)
 
 
+class TomlSyntaxTests(unittest.TestCase):
+    """#29: BMAD silently skips an override it cannot parse, so a typo would switch the bridge off unnoticed."""
+
+    def test_overrides_and_formulas_parse(self):
+        root = Path(__file__).resolve().parent.parent
+        files = [*sorted((root / "_bmad" / "custom").glob("*.toml")), *sorted((root / ".beads" / "formulas").glob("*.toml"))]
+        self.assertTrue(files)
+        for f in files:
+            with self.subTest(f.name):
+                tomllib.loads(f.read_text(encoding="utf-8"))
+
+
 class PlanningMoleculeTests(unittest.TestCase):
     """#26: planning overrides find their molecule step by label, never by title."""
 
