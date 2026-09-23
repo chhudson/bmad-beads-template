@@ -48,11 +48,17 @@ fi
 need uv    "https://docs.astral.sh/uv/  (curl -LsSf https://astral.sh/uv/install.sh | sh)"
 if ! command -v bd >/dev/null 2>&1; then
   echo "bd not found — installing @beads/bd@$BD_VERSION via npm (or: brew install beads)"
-  npm install -g "@beads/bd@$BD_VERSION"
+  # --foreground-scripts: the package's postinstall downloads the binary; show it if that fails.
+  npm install -g --foreground-scripts "@beads/bd@$BD_VERSION"
 elif [[ "$BD_VERSION" != latest ]] && ! bd version | grep -qF "$BD_VERSION"; then
   echo "warning: BD_VERSION=$BD_VERSION but $(bd version | head -1) is installed — bootstrap does not replace an existing bd" >&2
 fi
-echo "bd:   $(bd version | head -1)"
+if ! BD_V="$(bd version 2>&1)"; then
+  echo "bd is on PATH but does not run: $BD_V" >&2
+  echo "(an npm install whose postinstall could not download the binary looks like this — try: brew install beads)" >&2
+  exit 1
+fi
+echo "bd:   $(head -1 <<<"$BD_V")"
 echo "node: $(node -v)   uv: $(uv --version)"
 [[ -d .git ]] || git init -q
 
