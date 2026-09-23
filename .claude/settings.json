@@ -1,4 +1,15 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(uv run scripts/bmad_beads.py:*)",
+      "Bash(uv run --quiet scripts/bmad_beads.py:*)",
+      "Bash(bd ready:*)",
+      "Bash(bd show:*)",
+      "Bash(bd list:*)",
+      "Bash(bd dep tree:*)",
+      "Bash(bd prime:*)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

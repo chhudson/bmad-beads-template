@@ -96,7 +96,7 @@ story cut in correct-course, closed with `bd close <id> --reason "…"`.
 ```
 AGENTS.md                      operating protocol for any agent (Claude Code, Codex, humans)
 CLAUDE.md                      points at AGENTS.md; project facts go below the line
-.claude/settings.json          SessionStart → bd prime
+.claude/settings.json          SessionStart → bd prime; read-only bd + bridge commands pre-allowed
 _bmad/custom/*.toml            BMAD overrides: dependency convention, claim-on-start, sync-on-complete
 .beads/formulas/bmad-planning.formula.toml   planning phases as a beads molecule
 scripts/bmad_beads.py          the bridge: import | sync | claim | status | doctor  (stdlib only)

@@ -4,18 +4,21 @@
 #   bash scripts/bootstrap.sh                  # embedded Dolt (default): zero infra, sync via git remote
 #   bash scripts/bootstrap.sh --server         # shared `dolt sql-server` for many concurrent writers
 #   bash scripts/bootstrap.sh --prefix cdq     # bead id prefix (default: repo directory name)
+#   bash scripts/bootstrap.sh --keep-readme    # never replace README.md with the project stub
 #
 # Idempotent: safe to re-run after pulling template updates or upgrading bmad/bd.
 set -euo pipefail
 
 PREFIX=""
 MODE_FLAGS=()
-USER_NAME="${BMAD_USER_NAME:-$(git config user.name 2>/dev/null || echo "$USER")}"
+KEEP_README=0
+USER_NAME="${BMAD_USER_NAME:-$(git config user.name 2>/dev/null || echo "${USER:-}")}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --prefix) PREFIX="$2"; shift 2 ;;
     --server) MODE_FLAGS+=(--server); shift ;;
     --user-name) USER_NAME="$2"; shift 2 ;;
+    --keep-readme) KEEP_README=1; shift ;;
     -h|--help) sed -n 2,9p "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -31,6 +34,12 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing: $1 — $2" >&2; exi
 say "Preflight"
 need git   "https://git-scm.com"
 need node  "Node 20.12+ (https://nodejs.org)"
+NODE_V="$(node -v | sed 's/^v//')"
+IFS=. read -r NODE_MAJOR NODE_MINOR _ <<<"$NODE_V"
+if (( NODE_MAJOR < 20 || (NODE_MAJOR == 20 && NODE_MINOR < 12) )); then
+  echo "Node $NODE_V is too old — BMAD needs 20.12+ (https://nodejs.org)" >&2
+  exit 1
+fi
 need uv    "https://docs.astral.sh/uv/  (curl -LsSf https://astral.sh/uv/install.sh | sh)"
 if ! command -v bd >/dev/null 2>&1; then
   echo "bd not found — installing @beads/bd via npm (or: brew install beads)"
@@ -74,7 +83,11 @@ bd remember --key bmad-sprint-status "sprint-status.yaml and _bmad-output/** are
 say "Project README"
 # A clone of the template still carries the template's own README, which describes
 # the template rather than this project. Replace it with a stub once, on first run.
-if grep -q '^# bmad-beads-template' README.md 2>/dev/null; then
+# Never in the template repo itself (dogfooding bootstrap there would overwrite the template's README).
+ORIGIN="$(git remote get-url origin 2>/dev/null || true)"
+if (( KEEP_README )) || [[ "$ORIGIN" =~ [:/]chhudson/bmad-beads-template(\.git)?$ ]]; then
+  echo "README.md kept (--keep-readme, or this is the template repo itself)"
+elif grep -q '^# bmad-beads-template' README.md 2>/dev/null; then
   cat > README.md <<STUB
 # ${PREFIX}
 
@@ -100,7 +113,7 @@ cat <<EOF
 
 Next:
   1. Commit:  git add -A && git commit -m "bootstrap BMAD×beads"
-  2. Plan:    bd cook bmad-planning && bd mol pour bmad-planning --var initiative="<name>"
+  2. Plan:    bd mol pour bmad-planning --var initiative="<name>"
               then open Claude Code and run /bmad-help
   3. Sync beads across machines: bd dolt push  (bd init recorded your git remote as sync.remote)
 EOF
