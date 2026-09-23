@@ -12,6 +12,7 @@ import io
 import json
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -306,6 +307,25 @@ class BDWrapperTests(unittest.TestCase):
             with self.assertRaises(bb.BDError) as cm:
                 bb.BD(Path(".")).update("x-1", assignee="me", if_assignee="")
         self.assertEqual(cm.exception.returncode, bb.BD_GUARD_MISMATCH)
+
+
+class OverrideTests(unittest.TestCase):
+    """#25: bmad-build-auto runs the same build unattended, so it carries the same rules."""
+
+    CUSTOM = Path(__file__).resolve().parent.parent / "_bmad" / "custom"
+
+    def load(self, name: str) -> dict:
+        return tomllib.loads((self.CUSTOM / f"{name}.toml").read_text(encoding="utf-8"))["workflow"]
+
+    def test_build_auto_facts_match_build(self):
+        build, auto = self.load("bmad-build"), self.load("bmad-build-auto")
+        missing = [f for f in build["persistent_facts"] if f not in auto["persistent_facts"]]
+        self.assertEqual(missing, [], "bmad-build-auto.toml is missing facts from bmad-build.toml")
+
+    def test_build_auto_on_complete(self):
+        on_complete = self.load("bmad-build-auto")["on_complete"]
+        for step in ("bmad_beads.py sync", "bd dolt push", "--status blocked"):
+            self.assertIn(step, on_complete)
 
 
 class RankTests(unittest.TestCase):
