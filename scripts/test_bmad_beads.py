@@ -301,6 +301,17 @@ class BDWrapperTests(unittest.TestCase):
         self.assertEqual(self.argv(status="review", actor="me"),
                          ["bd", "update", "x-1", "--status", "review", "--actor", "me", "--json"])
 
+    def test_non_json_output_is_a_clean_error(self):
+        # #30: a stray warning on stdout used to escape main() as a JSONDecodeError traceback.
+        noisy = mock.Mock(returncode=0, stdout="warning: schema skew\n[]", stderr="")
+        with mock.patch.object(bb.subprocess, "run", return_value=noisy):
+            with self.assertRaisesRegex(bb.BDError, "non-JSON output: warning: schema skew$"):
+                bb.BD(Path(".")).list(status="open")
+        with mock.patch.object(bb.subprocess, "run", return_value=noisy), \
+             contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(bb.main(["status"]), 1)
+        self.assertIn("error: bd list", err.getvalue())
+
     def test_exit_code_kept(self):
         failed = mock.Mock(returncode=13, stdout="", stderr="assignee mismatch")
         with mock.patch.object(bb.subprocess, "run", return_value=failed):

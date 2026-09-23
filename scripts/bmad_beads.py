@@ -153,7 +153,10 @@ class BD:
         out = res.stdout.strip()
         if not out:
             return None
-        data = json.loads(out)
+        try:
+            data = json.loads(out)
+        except json.JSONDecodeError:
+            raise BDError(f"bd {' '.join(args)} printed non-JSON output: {out.splitlines()[0][:200]}", res.returncode) from None
         # Tolerate the v2 envelope ({"schema_version":1,"data":...}) announced for beads 2.0.
         if isinstance(data, dict) and "data" in data and "schema_version" in data:
             data = data["data"]
