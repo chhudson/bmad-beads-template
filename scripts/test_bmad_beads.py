@@ -460,7 +460,11 @@ class FakeBD:
             if k in kw:
                 i[k] = kw[k]
 
-    def close(self, issue_id: str, reason: str) -> None:
+    def close(self, issue_id: str, reason: str, actor: str | None = None) -> None:
+        i = self.issues[issue_id]
+        if i["assignee"] and i["assignee"] != (actor or self.actor):  # bd ≥ 1.3
+            raise bb.BDError(f"bd close {issue_id} failed: cannot close {issue_id}: assignee is "
+                             f"\"{i['assignee']}\", actor is \"{actor or self.actor}\"", 1)
         if self._mutate("close", issue_id, reason):
             self.issues[issue_id]["status"] = "closed"
 
@@ -569,6 +573,15 @@ class SyncCommandTests(CommandTestCase):
         self.assertEqual(self.bd.calls, [])
         self.assertEqual((self.bd.issues[a]["status"], self.bd.issues[b]["status"]), ("blocked", "deferred"))
         self.assertEqual(self.yaml()["1-1-a"], "in-progress")
+
+    def test_done_closes_a_story_someone_else_holds(self):
+        # bd 1.3 refuses to close another actor's bead; code-review often runs as someone
+        # other than the builder. Found by the upstream canary.
+        a = self.bd.story("1-1-a", 1, status="review", assignee="alice")
+        self.bd.story("1-2-b", 1)
+        self.write(e1="in-progress", s11="done")
+        self.assertEqual(self.sync(), 0, self.err.getvalue())
+        self.assertEqual(self.bd.issues[a]["status"], "closed")
 
     def test_done_still_closes_a_blocked_bead(self):
         a = self.bd.story("1-1-a", 1, status="blocked")
