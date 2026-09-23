@@ -110,7 +110,7 @@ Taskfile.yml                   task status | ready | import | sync | doctor | te
 docs/BLUEPRINT.md              the design: ownership, data flow, failure modes, team modes
 docs/references/               vendored standards + library docs; README.md is the manifest (anti-AI-slop shipped)
 .github/workflows/bmad-beads-bridge.yml      CI for the BRIDGE only — add your project's own workflow
-.github/workflows/upstream-canary.yml        weekly canary against @latest BMAD + bd; opens an issue on failure
+.github/workflows/upstream-canary.yml        weekly canary against @latest BMAD + bd (opt-in outside the template: UPSTREAM_CANARY=on)
 ```
 
 `_bmad/` (skills, config) and `.beads/` (database) are created by the bootstrap, not shipped —
@@ -139,10 +139,13 @@ uv run scripts/update_from_template.py             # newest release (or --ref vX
 
 Or run `/update-template` in Claude Code, which runs the updater and then resolves any conflicts.
 Projects made before v0.3.0 don't have the script yet; run it from the template:
-`uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/main/scripts/update_from_template.py`.
+`uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.3.1/scripts/update_from_template.py`.
+If Claude Code's auto mode blocks running a script from a URL, type the command yourself with a
+leading `!`, then run `/update-template` to finish.
 
 It works out which release the project came from (`.template-version`, or by matching files
-against the template's tags), then for each file the template changed:
+against every template commit, so a project made from `main` between releases is found too),
+then for each file the template changed:
 
 | Your copy | What happens |
 |---|---|

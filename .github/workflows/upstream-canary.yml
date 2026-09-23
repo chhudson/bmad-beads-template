@@ -7,6 +7,10 @@
 # Also runs on PRs that touch what it exercises, and by hand with a chosen pair
 # (Actions → upstream canary → Run workflow). Not a required check.
 #
+# In a project made from the template, the weekly run is opt-in, so a client repo doesn't start
+# filing issues against itself: set the repository variable UPSTREAM_CANARY to `on`
+# (Settings → Secrets and variables → Actions → Variables). Manual and PR runs always work.
+#
 # Actions are pinned by commit SHA (tag in the comment); bump them with bmad-beads-bridge.yml.
 name: upstream canary
 on:
@@ -30,6 +34,7 @@ permissions:
   contents: read
 jobs:
   canary:
+    if: github.event_name != 'schedule' || github.repository == 'chhudson/bmad-beads-template' || vars.UPSTREAM_CANARY == 'on'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

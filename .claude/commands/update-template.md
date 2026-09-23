@@ -15,11 +15,21 @@ holding `REPORT.md` (what it did), `undo.sh`, `backup/`, and, when there are con
      runs on a clean tree, so those uncommitted changes are that run's own work: don't run the
      updater again, and don't commit or stash them.
    - **Otherwise run it** from the project root: `uv run scripts/update_from_template.py $ARGUMENTS`.
-     Projects made before v0.3.0 don't have the script; use
-     `uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/main/scripts/update_from_template.py $ARGUMENTS`.
+     Projects made before v0.3.0 don't have the script. Run the release's own copy: find the
+     newest tag with
+     `git ls-remote --tags --refs --sort=-v:refname https://github.com/chhudson/bmad-beads-template 'v*' | head -1`,
+     then `uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/<tag>/scripts/update_from_template.py $ARGUMENTS`.
+     Never use `main`; that is whatever happens to be unreleased that day.
      Exit 0: done, no conflicts. Exit 2: conflicts and/or failing tests. Exit 1: it did not run. If
      it refused because of uncommitted changes, show `git status --short` and ask the user whether
      to commit or stash; never do either on your own.
+   - **If a permission check blocks the run** (auto mode treats a script fetched from a URL as
+     external code), don't look for another way to run it. Give the user the exact command to type
+     with a leading `!` (it runs in this session, so its output lands in the conversation), and stop.
+     When the output arrives, continue at step 2, or at step 3 if it reported no conflicts.
+   - **If REPORT.md or the output says the base was guessed** and you have reason to doubt it (for
+     example, a conflict on a file the project never edited), compare the project's copy with the
+     template's history, and re-run with `--base <tag or commit>` after `bash <run>/undo.sh`.
 
 2. **Resolve each unticked conflict** in the run's `CONFLICTS.md`. For each `path`, the project
    file is exactly as it was before the update. `conflicts/<path>.base`, `.local` and `.template`
