@@ -3,7 +3,7 @@
 # that scripts/** still passes. Add your project's own workflow beside this one —
 # nothing in this file will run code outside scripts/.
 #
-# Runs on every push and PR (no path filter) on purpose: the `test` job is a
+# Runs on every PR and every push to main (no path filter) on purpose: the `test` job is a
 # required status check on main, and a required check that never runs blocks
 # the merge. It takes about ten seconds.
 name: bridge tests

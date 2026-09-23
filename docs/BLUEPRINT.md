@@ -58,7 +58,7 @@ Two rules make the sync trivially safe:
 | BMAD | beads |
 |---|---|
 | `## Epic N: Title` | issue `type=epic`, title `Epic N: Title`, labels `bmad-epic, epic-N`, metadata `{bmad_epic_key: "epic-N", bmad_epic: N}` |
-| `### Story N.M: Title` | child `type=task` under the epic (hierarchical id `prefix-xxxx.M`), labels `story, epic-N`, description = *As a / I want / So that*, `acceptance_criteria` = the Given/When/Then block, metadata `{bmad_story_key: "N-M-slug", bmad_ref: "N.M"}` |
+| `### Story N.M: Title` | child `type=task` under the epic (hierarchical id `prefix-xxxx.K`: beads numbers children in creation order, so K is **not** the story number once a milestone or a late story is added; match on `bmad_story_key`, never on the id suffix), labels `story, epic-N`, description = *As a / I want / So that*, `acceptance_criteria` = the Given/When/Then block, metadata `{bmad_story_key: "N-M-slug", bmad_ref: "N.M"}` |
 | `**Depends on:** A.B, C.D` under a story | `bd dep add <story> <A.B>` (type `blocks`) |
 | `**Depends on:** Epic K` under an epic | a milestone task **"Epic K complete"** (label `epic-gate`, metadata `bmad_epic_gate`) blocked by every story of K; every story of this epic is blocked by the milestone. (beads only lets tasks block tasks — an epic cannot be a blocker.) `sync` closes the milestone when K's stories are all closed. |
 | `**Depends on:** Epic K` under a story | that story alone is blocked by the "Epic K complete" milestone |
@@ -73,6 +73,9 @@ The story key uses BMAD's exact slug rule (`sprint_plan.py::_slug`: lowercase, `
 60 chars), so `sprint-status.yaml` keys and bead metadata line up byte-for-byte. Matching on
 re-import is by metadata key, never by title, so retitling a story in beads is harmless; retitling
 it in `epics.md` forks the key (BMAD forks it too — this is BMAD's behaviour, not the bridge's).
+Renumbering forks keys too, and worse: inserting Story 2.2 in front of an existing 2.2 renames
+every story after it. New stories are appended with the next free number or a letter suffix
+(`2.3a`, which the parser accepts).
 `doctor` reports the drift.
 
 `import` adds and retitles; it never deletes. Removed stories are closed by hand with a reason
@@ -172,8 +175,8 @@ an *export* for viewers and migration, not the source of truth; the template doe
 - **`on_complete` is advisory.** An agent that exits early skips the sync. Mitigation: `sync` is
   idempotent, `status`/`doctor` are one command, and the `SessionStart` hook means the next
   session sees the true graph regardless.
-- **Retitled stories fork keys** — in BMAD as much as in beads. Edit bodies, not titles, after
-  import; `doctor` lists keys present in one store but not the other.
+- **Retitled or renumbered stories fork keys** — in BMAD as much as in beads. Edit bodies, not
+  titles, after import, and append new stories (`2.4`, or `2.3a`) instead of renumbering; `doctor` lists keys present in one store but not the other.
 - **`review` is a custom beads status.** If a clone is initialised without
   `bd config set status.custom review:wip`, `sync` fails loudly on the first `review` story.
   `doctor` checks it; `bootstrap.sh` sets it; the setting lives in the Dolt DB so it syncs.
@@ -195,7 +198,7 @@ an *export* for viewers and migration, not the source of truth; the template doe
 
 ## 7. What to standardise next
 
-The bridge is 700 lines of stdlib Python because the contract is the product, not the code. The
+The bridge is about 1,000 lines of stdlib Python because the contract is the product, not the code. The
 things worth hardening in order: a `bmad-beads` custom BMAD module (so `npx bmad-method install
 --custom-source` ships the overrides instead of the template copying them), the bmad-loop plugin
 hook, and a `bd` label convention for routing stories to people versus agents
