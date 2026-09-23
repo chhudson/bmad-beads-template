@@ -106,13 +106,9 @@ def merge_text(base: bytes, local: bytes, new: bytes, union: bool = False) -> tu
 def merge_json_value(base, local, new):
     """Three-way merge of parsed JSON. Objects merge per key; arrays keep local items, drop the
     ones the template removed, and append the ones it added. Returns CONFLICT when both sides
-    changed one scalar differently."""
-    if local == new:
-        return local
-    if local == base:
-        return new
-    if new == base:
-        return local
+    changed one scalar differently. Objects are always merged key by key, in local's key order:
+    dict equality ignores order, so an `==` shortcut would swap in the template's ordering
+    (and `bd setup claude` rewrites settings.json with sorted keys)."""
     if isinstance(local, dict) and isinstance(new, dict):
         b = base if isinstance(base, dict) else {}
         out = {}
@@ -124,6 +120,12 @@ def merge_json_value(base, local, new):
             if v is not miss:
                 out[k] = v
         return out
+    if local == new:
+        return local
+    if local == base:
+        return new
+    if new == base:
+        return local
     if isinstance(local, list) and isinstance(new, list):
         b = base if isinstance(base, list) else []
         out = [x for x in local if not (x in b and x not in new)]
@@ -140,7 +142,8 @@ def merge_json(base: bytes, local: bytes, new: bytes) -> tuple[bytes, bool]:
     v = merge_json_value(b, l, n)
     if v is CONFLICT:
         return local, False
-    return (json.dumps(v, indent=2, ensure_ascii=False) + "\n").encode("utf-8"), True
+    newline = "\n" if local.endswith(b"\n") else ""  # keep the local file's style
+    return (json.dumps(v, indent=2, ensure_ascii=False) + newline).encode("utf-8"), True
 
 
 def _sq(s: str) -> str:
@@ -246,24 +249,52 @@ def detect_base(root: Path, repo: Path, tags: list[str]) -> tuple[str, str]:
         if git("rev-parse", "-q", "--verify", f"{ref}^{{commit}}", cwd=repo, check=False).strip():
             return ref, f"{VERSION_FILE}"
         print(f"! {VERSION_FILE} names {ref!r}, which the template does not have — guessing from file contents")
-    best, best_n = None, -1
-    for tag in tags:  # oldest → newest, so a tie goes to the newer tag
-        t = Tree(repo, tag)
-        n = sum(1 for p in t.paths if p not in PROJECT_OWNED and (root / p).is_file() and (root / p).read_bytes() == t.read(p))
-        if n >= best_n:
-            best, best_n = tag, n
-    if best is None or best_n == 0:
-        raise SystemExit("error: cannot tell which template release this project came from; pass --base vX.Y.Z")
-    return best, f"guessed: {best_n} files match {best} exactly"
+    # Score every template commit, not just releases: a project made from `main` between
+    # releases matches that commit exactly. Blob ids make this one `ls-tree` per commit.
+    commits = git("rev-list", "--reverse", "HEAD", *tags, cwd=repo).split()
+    commits = list(dict.fromkeys(commits))  # oldest first; strictly-greater keeps the oldest on a tie
+    paths: set[str] = set()
+    trees = {}
+    for c in commits:
+        trees[c] = {}
+        for line in git("ls-tree", "-r", c, cwd=repo).splitlines():
+            meta, path = line.split("\t", 1)
+            if path not in PROJECT_OWNED:
+                trees[c][path] = meta.split()[2]
+                paths.add(path)
+    present = sorted(p for p in paths if (root / p).is_file())
+    local_ids = dict(zip(present, git("hash-object", "--no-filters", "--", *present, cwd=root).split())) if present else {}
+    best, best_n = None, 0
+    for c in commits:
+        n = sum(1 for p, blob in trees[c].items() if local_ids.get(p) == blob)
+        if n > best_n:
+            best, best_n = c, n
+    if best is None:
+        raise SystemExit("error: cannot tell which template release this project came from; pass --base <tag or commit>")
+    tag = next((t for t in tags if git("rev-parse", f"{t}^{{commit}}", cwd=repo).strip() == best), None)
+    if tag:
+        return tag, f"guessed: {best_n} files match {tag} exactly"
+    short = git("rev-parse", "--short=10", best, cwd=repo).strip()
+    after = release_of(repo, short, tags)
+    return short, f"guessed: {best_n} files match template commit {short}" + (f" (after {after})" if after else "") + " exactly"
 
 
-def upgrading_notes(new: Tree, since: str, upto: str) -> str:
-    """The UPGRADING.md sections for releases after `since`, up to and including `upto`."""
+def release_of(repo: Path, ref: str, tags: list[str]) -> str | None:
+    """`ref` itself if it is a release tag, else the newest release tag it contains."""
+    if ref in tags:
+        return ref
+    out = git("describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", ref, cwd=repo, check=False).strip()
+    return out if out in tags else None
+
+
+def upgrading_notes(new: Tree, since: str | None, upto: str | None) -> str:
+    """UPGRADING.md sections for releases after `since` up to and including `upto` (both release
+    tags; None = no bound). Callers map a commit to its release with release_of()."""
     text = (new.read("UPGRADING.md") or b"").decode("utf-8")
     out = []
     for m in re.finditer(r"^## (v\d+\.\d+\.\d+)\b.*?(?=^## v\d|\Z)", text, re.M | re.S):
-        v = m.group(1)
-        if _vkey(since) < _vkey(v) and (not re.fullmatch(r"v\d+\.\d+\.\d+", upto) or _vkey(v) <= _vkey(upto)):
+        v = _vkey(m.group(1))
+        if (since is None or _vkey(since) < v) and (upto is None or v <= _vkey(upto)):
             out.append(m.group(0).strip())
     return "\n\n".join(out)
 
@@ -320,7 +351,9 @@ def main(argv: list[str] | None = None) -> int:
         # clone can still resolve.
         recorded = ref if ref in tags else git("rev-parse", f"{ref}^{{commit}}", cwd=repo).strip()
         plan = plan_update(root, Tree(repo, base_ref), new, ignore)
-        notes = upgrading_notes(new, base_ref, ref)
+        # A commit on main between releases has taken that release's steps already (its tag is
+        # an ancestor) but not the next one's; a non-tag target gets every newer section.
+        notes = upgrading_notes(new, release_of(repo, base_ref, tags), ref if ref in tags else None)
 
     width = max((len(label) for label, _ in plan.actions), default=0)
     for label, path in plan.actions:

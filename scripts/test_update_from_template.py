@@ -11,6 +11,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -199,6 +200,15 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(self.run_update("--check", "bad.json"), 1)
         self.assertEqual(self.run_update("--check", ".claude/settings.json"), 0)
 
+    def test_json_keeps_local_key_order_and_newline(self):
+        # #46: bd writes settings.json with sorted keys and no trailing newline; the merge
+        # must not swap in the template's ordering and turn a one-block change into a rewrite.
+        self.run_update()
+        text = self.read(".claude/settings.json")
+        self.assertLess(text.index('"command"'), text.index('"type"'))
+        self.assertLess(text.index('"hooks"'), text.index('"permissions"'))
+        self.assertFalse(text.endswith("\n"))
+
     def test_settings_json_merged_structurally(self):
         # A line merge of this file exits 0 but produces two `permissions` keys.
         self.run_update()
@@ -244,6 +254,69 @@ class UpdateTests(unittest.TestCase):
         commit(self.proj, "update")
         self.run_update()
         self.assertIn("already up to date", self.out.getvalue())
+
+
+class BetweenReleasesTests(unittest.TestCase):
+    """#46: a project made from template `main` between two releases (bl-elevate was made from
+    the commit right after v0.2.0)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        tmp = Path(self.tmp.name)
+        self.tmpl, self.proj = tmp / "template", tmp / "project"
+        self.tmpl.mkdir()
+        self.proj.mkdir()
+        init_repo(self.tmpl)
+        write_tree(self.tmpl, V1)
+        commit(self.tmpl, "v1")
+        sh("git", "tag", "v0.1.0", cwd=self.tmpl)
+        write_tree(self.tmpl, {"scripts/untouched.sh": "echo mid\n"})
+        commit(self.tmpl, "mid-release fix")
+        self.mid = sh("git", "rev-parse", "--short=10", "HEAD", cwd=self.tmpl).strip()
+        for path in set(V1) - set(V2):
+            (self.tmpl / path).unlink()
+        write_tree(self.tmpl, V2)
+        commit(self.tmpl, "v2")
+        sh("git", "tag", "v0.2.0", cwd=self.tmpl)
+        init_repo(self.proj)
+        write_tree(self.proj, V1)
+        write_tree(self.proj, {"scripts/untouched.sh": "echo mid\n", "README.md": "# acme\n"})
+        commit(self.proj, "project from main")
+        cwd = Path.cwd()
+        os.chdir(self.proj)
+        self.addCleanup(os.chdir, cwd)
+
+    def run_update(self, *args: str) -> int:
+        self.out = io.StringIO()
+        with contextlib.redirect_stdout(self.out), contextlib.redirect_stderr(self.out):
+            return uft.main(["--source", str(self.tmpl), "--no-checks", *args])
+
+    def test_guess_finds_the_commit_and_no_false_conflict(self):
+        self.assertEqual(self.run_update(), 0, self.out.getvalue())
+        out = self.out.getvalue()
+        self.assertIn(f"template commit {self.mid} (after v0.1.0)", out)
+        self.assertNotIn("CONFLICT", out)
+        self.assertEqual((self.proj / "scripts" / "untouched.sh").read_text(), "echo v2\n")
+        self.assertIn("bump bd", out)  # v0.2.0's steps
+        self.assertNotIn("- first", out)  # v0.1.0's steps were already taken
+
+    def test_base_accepts_a_commit(self):
+        # This crashed in v0.3.0: upgrading_notes parsed the base as vX.Y.Z.
+        self.assertEqual(self.run_update("--base", self.mid, "--dry-run"), 0, self.out.getvalue())
+        self.assertIn(f"{self.mid} → v0.2.0", self.out.getvalue())
+
+
+class DocsPinTests(unittest.TestCase):
+    """#46: the docs must run the release's own updater, not whatever is on main."""
+
+    def test_script_urls_name_the_current_release(self):
+        root = Path(__file__).resolve().parent.parent
+        version = (root / uft.VERSION_FILE).read_text(encoding="utf-8").strip()
+        for doc in ("README.md", "UPGRADING.md", ".claude/commands/update-template.md"):
+            refs = re.findall(r"bmad-beads-template/([^/\s]+)/scripts/update_from_template\.py", (root / doc).read_text(encoding="utf-8"))
+            with self.subTest(doc):
+                self.assertTrue(set(refs) <= {version, "<tag>"}, f"{doc} runs the updater from {refs}, not {version}")
 
 
 class JsonMergeTests(unittest.TestCase):
