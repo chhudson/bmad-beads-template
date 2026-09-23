@@ -6,11 +6,11 @@
 [workflow]
 
 activation_steps_append = [
-  "bmad-beads bridge: check `bd ready` for an open planning bead for this phase (a task whose title contains 'prd' from the bmad-planning molecule). If one exists, `bd update <id> --claim` it now. If none exists, continue silently — the molecule is optional.",
+  "bmad-beads bridge: run `bd ready --label bmad-step:prd --json`. That label is set only on the 'prd' step of the bmad-planning molecule; never pick a planning bead by its title, and never claim a bead of type `gate` or a `bmad-step:prd-signoff` step — those are human sign-offs. Exactly one result: `bd update <id> --claim` it now. More than one (several initiatives poured): ask the user which initiative this run is for, and claim only that one. None: continue silently — the molecule is optional.",
 ]
 
 persistent_facts = [
   "file:{project-root}/docs/references/style/anti-ai-slop/README.md",
 ]
 
-on_complete = "bmad-beads bridge: if you claimed a planning bead on activation, `bd close <id> --reason \"artifact complete: <output path>\"`. Record 1-3 durable decisions from this phase with `bd remember \"<decision>\"` so later sessions inherit them. Then tell the user: the molecule's next step is a HUMAN sign-off gate — they can see it with `bd gate list` and approve it by closing the gate bead (`bd close <gate-id> --reason approved`). Never close a human gate yourself."
+on_complete = "bmad-beads bridge: if you claimed a planning bead on activation, `bd close <id> --reason \"artifact complete: <output path>\"`. Record 1-3 durable decisions from this phase with `bd remember \"<decision>\"` so later sessions inherit them. Then tell the user: the molecule's next step is a HUMAN sign-off gate. They see it with `bd gate list` and approve by closing the gate bead (`bd close <gate-id> --reason approved`), then closing the sign-off step it unblocks (`bd ready --label bmad-step:prd-signoff`, then `bd close <id> --reason approved`); architecture waits on that step. Never close a human gate or a sign-off step yourself."

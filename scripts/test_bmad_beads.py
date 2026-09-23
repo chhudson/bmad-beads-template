@@ -328,6 +328,24 @@ class OverrideTests(unittest.TestCase):
             self.assertIn(step, on_complete)
 
 
+class PlanningMoleculeTests(unittest.TestCase):
+    """#26: planning overrides find their molecule step by label, never by title."""
+
+    ROOT = Path(__file__).resolve().parent.parent
+
+    def test_every_step_labelled_with_its_id(self):
+        formula = tomllib.loads((self.ROOT / ".beads" / "formulas" / "bmad-planning.formula.toml").read_text(encoding="utf-8"))
+        for step in formula["steps"]:
+            self.assertIn(f"bmad-step:{step['id']}", step.get("labels", []), step["id"])
+
+    def test_overrides_match_by_label(self):
+        for phase, skill in (("brief", "bmad-product-brief"), ("prd", "bmad-prd"), ("architecture", "bmad-architecture")):
+            wf = tomllib.loads((self.ROOT / "_bmad" / "custom" / f"{skill}.toml").read_text(encoding="utf-8"))["workflow"]
+            text = " ".join(wf["activation_steps_append"])
+            self.assertIn(f"--label bmad-step:{phase}", text, skill)
+            self.assertNotIn("title contains", text, skill)
+
+
 class RankTests(unittest.TestCase):
     def test_vocab(self):
         self.assertLess(bb.BMAD_RANK["ready-for-dev"], bb.BMAD_RANK["in-progress"])
