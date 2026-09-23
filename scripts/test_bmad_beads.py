@@ -284,6 +284,30 @@ class BeadsToBmadTests(unittest.TestCase):
         self.assertIsNone(bb.beads_to_bmad("closed", "awaiting-operator", False))
 
 
+class BDWrapperTests(unittest.TestCase):
+    def argv(self, **kw) -> list[str]:
+        done = mock.Mock(returncode=0, stdout="", stderr="")
+        with mock.patch.object(bb.subprocess, "run", return_value=done) as run:
+            bb.BD(Path("."), actor=kw.pop("actor", None)).update("x-1", **kw)
+        return run.call_args.args[0]
+
+    def test_bare_flag_and_empty_value(self):
+        self.assertEqual(self.argv(claim=True), ["bd", "update", "x-1", "--claim", "--json"])
+        self.assertEqual(self.argv(assignee="me", if_assignee=""),
+                         ["bd", "update", "x-1", "--assignee", "me", "--if-assignee", "", "--json"])
+
+    def test_actor_on_every_call(self):
+        self.assertEqual(self.argv(status="review", actor="me"),
+                         ["bd", "update", "x-1", "--status", "review", "--actor", "me", "--json"])
+
+    def test_exit_code_kept(self):
+        failed = mock.Mock(returncode=13, stdout="", stderr="assignee mismatch")
+        with mock.patch.object(bb.subprocess, "run", return_value=failed):
+            with self.assertRaises(bb.BDError) as cm:
+                bb.BD(Path(".")).update("x-1", assignee="me", if_assignee="")
+        self.assertEqual(cm.exception.returncode, bb.BD_GUARD_MISMATCH)
+
+
 class RankTests(unittest.TestCase):
     def test_vocab(self):
         self.assertLess(bb.BMAD_RANK["ready-for-dev"], bb.BMAD_RANK["in-progress"])
@@ -358,10 +382,18 @@ class FakeBD:
         return iid
 
     def update(self, issue_id: str, **kw) -> None:
+        i = self.issues[issue_id]
+        # bd 1.3 semantics, as observed: --claim is atomic and idempotent for the holder;
+        # --if-assignee mismatch writes nothing and exits 13.
+        if kw.get("claim") and i["assignee"] and i["assignee"] != self.actor:
+            raise bb.BDError(f"bd update {issue_id} --claim failed: issue already claimed by {i['assignee']}", 1)
+        if kw.get("claim") and i["status"] == "in_progress" and not i["assignee"]:
+            raise bb.BDError(f"bd update {issue_id} --claim failed: issue not claimable: status in_progress", 1)
+        if "if_assignee" in kw and i["assignee"] != kw["if_assignee"]:
+            raise bb.BDError(f"bd update {issue_id} failed: assignee mismatch", bb.BD_GUARD_MISMATCH)
         if not self._mutate("update", issue_id, kw):
             return
-        i = self.issues[issue_id]
-        if "claim" in kw:
+        if kw.get("claim"):
             i["assignee"], i["status"] = self.actor, "in_progress"
         for k in ("status", "title", "assignee"):
             if k in kw:
@@ -387,8 +419,9 @@ class CommandTestCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.bd = FakeBD()
-        def factory(cwd, dry_run=False, verbose=False):
-            self.bd.dry_run = dry_run
+        def factory(cwd, dry_run=False, verbose=False, actor=None):
+            self.bd.dry_run, self.bd.actor_arg = dry_run, actor
+            self.bd.actor = actor or "me"  # what bd would resolve from BEADS_ACTOR / git / USER
             return self.bd
         patches = [mock.patch.object(bb, "BD", factory), mock.patch.object(bb, "project_root", lambda: self.root)]
         for p in patches:
@@ -641,7 +674,37 @@ class ClaimCommandTests(CommandTestCase):
     def test_held_by_another_refused(self):
         self.bd.story("1-1-a", 1, status="in_progress", assignee="them")
         self.assertEqual(self.claim(), 1)
-        self.assertIn("'them'", self.err.getvalue())
+        self.assertIn("already claimed by them", self.err.getvalue())
+        self.assertEqual(self.bd.calls, [])
+
+    def test_open_but_assigned_to_another_refused(self):
+        self.bd.story("1-1-a", 1, assignee="them")
+        self.assertEqual(self.claim(), 1)
+        self.assertEqual(self.bd.calls, [])
+
+    def test_unassigned_in_progress_is_claimed(self):
+        # #24: sync promoted it from yaml without a claim; it used to be "resumed" unclaimed.
+        a = self.bd.story("1-1-a", 1, status="in_progress")
+        self.assertEqual(self.claim(), 0)
+        self.assertEqual(self.bd.calls, [("update", a, {"assignee": "me", "if_assignee": ""})])
+        self.assertEqual(self.bd.issues[a]["assignee"], "me")
+
+    def test_unassigned_in_progress_lost_race_refused(self):
+        a = self.bd.story("1-1-a", 1, status="in_progress")
+        real = bb.load_index
+        def stale(bd):  # another agent assigns it between our read and our write
+            idx = real(bd)
+            self.bd.issues[a]["assignee"] = "them"
+            return idx
+        with mock.patch.object(bb, "load_index", stale):
+            self.assertEqual(self.claim(), 1)
+        self.assertIn("claimed by someone else", self.err.getvalue())
+        self.assertEqual(self.bd.issues[a]["assignee"], "them")
+
+    def test_actor_passed_to_bd(self):
+        self.bd.story("1-1-a", 1)
+        self.claim()
+        self.assertEqual(self.bd.actor_arg, "me")
 
     def test_review_refused(self):
         self.bd.story("1-1-a", 1, status="review")
@@ -663,7 +726,7 @@ class ClaimCommandTests(CommandTestCase):
     def test_ready_and_unclaimed_is_claimed(self):
         a = self.bd.story("1-1-a", 1)
         self.assertEqual(self.claim(), 0)
-        self.assertEqual(self.bd.mutations("update"), [("update", a, {"claim": ""})])
+        self.assertEqual(self.bd.mutations("update"), [("update", a, {"claim": True})])
         self.assertEqual(self.bd.issues[a]["assignee"], "me")
 
     def test_resume_own_claim(self):
