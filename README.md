@@ -130,18 +130,53 @@ See `docs/BLUEPRINT.md` for the full design and the things that will bite you.
 ## Updating from the template
 
 A repo made with "Use this template" shares no git history with the template, so it can't
-`git pull` a new release. The updater merges each file instead:
+`git pull` a new release. The updater merges each file instead.
+
+### Projects on v0.3.0 or later
+
+Run `/update-template` in Claude Code. It runs the updater, resolves any conflicts, then runs the
+tests and `doctor`. Or run the updater yourself:
 
 ```bash
 uv run scripts/update_from_template.py --dry-run   # what would change
 uv run scripts/update_from_template.py             # newest release (or --ref vX.Y.Z)
 ```
 
-Or run `/update-template` in Claude Code, which runs the updater and then resolves any conflicts.
-Projects made before v0.3.0 don't have the script yet; run it from the template:
-`uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.3.1/scripts/update_from_template.py`.
-If Claude Code's auto mode blocks running a script from a URL, type the command yourself with a
-leading `!`, then run `/update-template` to finish.
+### First update: projects from v0.2.0 or earlier
+
+These projects don't have the updater or `/update-template` yet, so the first run fetches the
+updater from the release. It goes straight to the newest release; there's no need to stop at
+v0.3.0 on the way.
+
+1. **Commit or stash everything.** The updater won't start with uncommitted changes, which is
+   what makes a run fully undoable.
+2. **Preview, then run** from the project root:
+
+   ```bash
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.3.1/scripts/update_from_template.py --dry-run
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.3.1/scripts/update_from_template.py
+   ```
+
+   In Claude Code's auto mode, Claude can't run a script from a URL itself. Type each line with a
+   leading `!` so it runs in the session.
+
+   The first line of output names the release it thinks the project came from, e.g.
+   `template: v0.2.0 → v0.3.1 (base guessed: …)`. If a file your team never edited comes up as a
+   conflict, that guess is probably wrong: run `bash .template-update/<timestamp>/undo.sh`, then
+   run again with `--base <tag or commit>`.
+3. **Resolve any conflicts** with `/update-template`, which the run has just added (restart Claude
+   Code if it doesn't appear). It keeps both your changes and the template's, then runs the tests
+   and `doctor`. No conflicts: skip this step.
+4. **Do the manual steps** the run prints from `UPGRADING.md`. For v0.2.0 → v0.3.1:
+   - bd 1.3 or newer is required: `brew upgrade beads`.
+   - Re-pour any planning molecule created before v0.3.0, or close its remaining steps by hand.
+   - Run `uv run scripts/bmad_beads.py sync` once.
+   - The upstream canary's weekly run is off in projects. Set the repository variable
+     `UPSTREAM_CANARY=on` if you want it.
+5. **Review `git diff`, then commit.** `.template-version` now records the release, so later updates
+   start from it and need no guessing.
+
+### What the updater does
 
 It works out which release the project came from (`.template-version`, or by matching files
 against every template commit, so a project made from `main` between releases is found too),
