@@ -30,6 +30,10 @@ tasks:
     desc: Bridge tests (parser, sprint-status editor, and import/sync/claim against a fake bd)
     cmds: [uv run --quiet scripts/test_bmad_beads.py]
 
+  canary:
+    desc: 'Bridge × installed BMAD/bd end to end. Writes beads: throwaway clones only'
+    cmds: [uv run --quiet scripts/canary.py]
+
   push:
     desc: Sync beads to the git remote (Dolt data lives under refs/dolt/data)
     cmds: [bd dolt push]

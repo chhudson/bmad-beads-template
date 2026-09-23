@@ -124,13 +124,19 @@ See `docs/BLUEPRINT.md` for the full design and the things that will bite you.
 
 ## Status
 
-Built against BMAD Method **6.11.0** and beads **1.2.2** (Aug 2026). Validated end-to-end
-Aug 2026 across two full dogfood cycles on a real project — planning → import → claim-guarded
-builds → code-review send-back and pass → milestone cascade (one sync closed an epic and
-unblocked the next two) — with the fixes from round one re-verified under a cold agent in
-round two. The bridge reads only the public shapes of `epics.md`, `sprint-status.yaml`, and
-`bd --json`; when either tool changes those, `scripts/test_bmad_beads.py` and
-`bmad_beads.py doctor` are where it shows first.
+Validated against BMAD Method **6.12.0** and beads **1.3.0** (Sep 2026) by the upstream
+canary (`scripts/canary.py`): a fresh bootstrap, BMAD's own `sprint_plan.py` writing
+`sprint-status.yaml`, then import → claim guard → review → done → milestone cascade, with
+BMAD's `validate` accepting the result. That run caught one bd 1.3 change (a bead can only be
+closed by its assignee), which the bridge now handles. The full dogfood cycles, two of them on a
+real project with a cold agent in round two, ran in Aug 2026 on BMAD 6.11.0 / beads 1.2.2.
+
+`bootstrap.sh` installs `@latest` of both unless you pin them
+(`BMAD_VERSION=6.12.0 BD_VERSION=1.3.0 bash scripts/bootstrap.sh`), and `doctor` warns when the
+installed pair differs from the validated one. The canary re-runs weekly in CI against
+`@latest` and opens an issue when it fails. The bridge reads only the public shapes of
+`epics.md`, `sprint-status.yaml`, and `bd --json`; when either tool changes those, the canary,
+`scripts/test_bmad_beads.py` and `bmad_beads.py doctor` are where it shows first.
 
 ## License
 

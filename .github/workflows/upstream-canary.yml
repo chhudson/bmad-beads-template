@@ -1,0 +1,81 @@
+# Upstream canary. bootstrap.sh installs BMAD and bd at @latest, so a new project can get a
+# pair nobody has tested. Weekly, this bootstraps a throwaway project from the template against
+# @latest and drives one story lifecycle through the bridge (scripts/canary.py), with BMAD's
+# own sprint_plan.py writing sprint-status.yaml. A scheduled failure opens (or comments on)
+# one issue.
+#
+# Also runs on PRs that touch what it exercises, and by hand with a chosen pair
+# (Actions → upstream canary → Run workflow). Not a required check.
+#
+# Actions are pinned by commit SHA (tag in the comment); bump them with bmad-beads-bridge.yml.
+name: upstream canary
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+    inputs:
+      bmad_version:
+        description: bmad-method version
+        default: latest
+      bd_version:
+        description: "@beads/bd version"
+        default: latest
+  pull_request:
+    paths:
+      - scripts/bootstrap.sh
+      - scripts/canary.py
+      - scripts/fixtures/**
+      - .github/workflows/upstream-canary.yml
+permissions:
+  contents: read
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    env:
+      BMAD_VERSION: ${{ inputs.bmad_version || 'latest' }}
+      BD_VERSION: ${{ inputs.bd_version || 'latest' }}
+      PROJECT: ${{ github.workspace }}/../canary-project
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - name: Throwaway project from the template
+        run: |
+          git config --global user.name canary
+          git config --global user.email canary@example.invalid
+          git config --global init.defaultBranch main
+          cp -R "$GITHUB_WORKSPACE" "$PROJECT"
+          cd "$PROJECT"
+          rm -rf .git
+          git init -q
+          git remote add origin https://example.invalid/canary.git
+      - name: Bootstrap (BMAD ${{ env.BMAD_VERSION }}, bd ${{ env.BD_VERSION }})
+        run: cd "$PROJECT" && bash scripts/bootstrap.sh --prefix canary
+      - name: Canary
+        run: cd "$PROJECT" && uv run scripts/canary.py
+      - name: Open or update the canary issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          bmad="$(grep -m1 -A3 '^installation:' "$PROJECT/_bmad/_config/manifest.yaml" 2>/dev/null | sed -n 's/^ *version: *//p' || true)"
+          bd="$(bd version 2>/dev/null | head -1 || true)"
+          body="The weekly upstream canary failed: $RUN_URL
+
+          Installed: BMAD ${bmad:-unknown}, ${bd:-bd unknown}. Validated pair: see \`VALIDATED\` in scripts/bmad_beads.py.
+
+          Reproduce locally in a throwaway clone: \`bash scripts/bootstrap.sh && uv run scripts/canary.py\`."
+          title="Upstream canary failing"
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label bug --label bootstrap --body "$body"
+          fi

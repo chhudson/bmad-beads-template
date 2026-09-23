@@ -1,7 +1,8 @@
 # Blueprint: BMAD × beads
 
-How the two tools are joined, what each owns, and where the seams are. Verified against
-BMAD Method 6.11.0 and beads 1.2.2 (Dolt backend), August 2026.
+How the two tools are joined, what each owns, and where the seams are. Designed and dogfooded
+on BMAD Method 6.11.0 and beads 1.2.2 (Dolt backend), August 2026; re-validated on 6.12.0 / 1.3.0
+by `scripts/canary.py`, September 2026.
 
 ## 1. The problem this solves
 
@@ -123,7 +124,7 @@ merge, survives `bmad-method install --action update`):
 `on_complete` is an *instruction to the agent*, not a shell hook — BMAD's SKILL.md reads
 "treat a string scalar as one instruction". So the bridge is only as reliable as the agent
 following it; `doctor` exists to catch a skipped step, and `sync` is safe to run by hand at any
-time. There is no shell-level hook in BMAD 6.11 that fires on workflow completion.
+time. There is no shell-level hook in BMAD 6.11 or 6.12 that fires on workflow completion.
 
 Session-level: Claude Code's `SessionStart` runs `bd prime --hook-json` (beads' own recommended
 hook; it re-fires after compaction, so no `PreCompact` hook is needed or installed).
@@ -193,6 +194,12 @@ an *export* for viewers and migration, not the source of truth; the template doe
   `epic-K` row from `done` back to `in-progress`. A dependent story already in progress keeps
   its claim; one still `ready-for-dev` drops back to `backlog` on the next sync. That is
   intended: K has open work again, but check `status` after a correct-course.
+- **Upstream drift.** Bootstrap installs `@latest` of BMAD and bd, so a new project can get a
+  pair nobody has tested. `VALIDATED` in `bmad_beads.py` names the last pair the canary passed
+  on; `doctor` warns on any other. The weekly `upstream canary` workflow runs `scripts/canary.py`
+  against `@latest` and opens an issue on failure. Pin with `BMAD_VERSION` / `BD_VERSION` when
+  a team wants the tested pair. bd 1.3 is the minimum: `claim` uses `--if-assignee`, and `sync`
+  closes a done story as its assignee because 1.3 refuses anyone else.
 - **Epic-level dependencies cost edges.** "Epic 2 depends on Epic 1" is |E1| + |E2| edges via
   the milestone, not |E1|×|E2|. Fine at tens of stories; revisit if an epic has hundreds.
 
