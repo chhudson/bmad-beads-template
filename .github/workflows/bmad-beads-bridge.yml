@@ -6,16 +6,25 @@
 # Runs on every PR and every push to main (no path filter) on purpose: the `test` job is a
 # required status check on main, and a required check that never runs blocks
 # the merge. It takes about ten seconds.
+#
+# Actions are pinned by commit SHA (tag in the comment); bump both together.
 name: bridge tests
 on:
   push:
     branches: [main]
   pull_request:
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      # Includes a tomllib parse of every _bmad/custom/*.toml and .beads/formulas/*.toml:
+      # BMAD silently skips an override with a syntax error.
       - run: uv run scripts/test_bmad_beads.py
       - run: uv run scripts/bmad_beads.py --help >/dev/null
+      # Pyflakes + syntax errors only, on a pinned ruff, so a new ruff default can't fail the build.
+      - run: uvx ruff@0.16.8 check --isolated --select E9,F scripts/
+      - run: shellcheck scripts/bootstrap.sh  # preinstalled on ubuntu-latest

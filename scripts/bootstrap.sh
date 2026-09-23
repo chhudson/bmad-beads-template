@@ -45,7 +45,7 @@ say "BMAD Method (npx bmad-method install → _bmad/, .claude/skills/)"
 npx -y bmad-method@latest install --yes --directory "$ROOT" --tools claude-code --modules bmm \
   --user-name "$USER_NAME" --output-folder _bmad-output >/dev/null
 mkdir -p _bmad-output/planning-artifacts _bmad-output/implementation-artifacts docs
-echo "installed: $(ls .claude/skills | wc -l | tr -d ' ') skills; team overrides in _bmad/custom/"
+echo "installed: $(find .claude/skills -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ') skills; team overrides in _bmad/custom/"
 
 say "beads (bd init --prefix $PREFIX ${MODE_FLAGS[*]:-})"
 if [[ -f .beads/config.yaml ]]; then
