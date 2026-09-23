@@ -135,10 +135,10 @@ class BD:
         self.cwd, self.dry_run, self.verbose, self.actor = cwd, dry_run, verbose, actor
         self.env = {**os.environ, "BD_NON_INTERACTIVE": "1"}
 
-    def run(self, *args: str, json_out: bool = True, mutating: bool = False) -> object:
+    def run(self, *args: str, json_out: bool = True, mutating: bool = False, actor: str | None = None) -> object:
         cmd = ["bd", *args]
-        if self.actor:
-            cmd += ["--actor", self.actor]
+        if actor or self.actor:
+            cmd += ["--actor", actor or self.actor]
         if json_out:
             cmd.append("--json")
         if self.verbose or (self.dry_run and mutating):
@@ -199,8 +199,8 @@ class BD:
                 args.append(v)
         self.run(*args, mutating=True)
 
-    def close(self, issue_id: str, reason: str) -> None:
-        self.run("close", issue_id, "--reason", reason, mutating=True)
+    def close(self, issue_id: str, reason: str, actor: str | None = None) -> None:
+        self.run("close", issue_id, "--reason", reason, mutating=True, actor=actor)
 
     def reopen(self, issue_id: str, reason: str) -> None:
         self.run("reopen", issue_id, "--reason", reason, mutating=True)
@@ -668,7 +668,10 @@ def cmd_sync(args: argparse.Namespace) -> int:
             continue
         if target and BD_RANK.get(bstat, 0) < BD_RANK[target]:
             if target == "closed":
-                bd.close(issue["id"], f"BMAD sprint-status: {key} done")
+                # bd ≥ 1.3 refuses to close a bead assigned to someone else. BMAD's `done` is
+                # authoritative (code-review wrote it, often not as the builder), so close it as
+                # its holder rather than with --force, which would also push past open gates.
+                bd.close(issue["id"], f"BMAD sprint-status: {key} done", actor=issue.get("assignee") or None)
             else:
                 bd.update(issue["id"], status=target)
             changes.append(f"{key}: beads {bstat} → {target}")
