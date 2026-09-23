@@ -51,7 +51,7 @@ if ! command -v bd >/dev/null 2>&1; then
   # The package's postinstall downloads the binary, but skips it whenever $CI is set, which
   # leaves a bd that cannot run. Bootstrap needs bd wherever it runs, so clear CI for this call.
   # --foreground-scripts shows the download if it fails.
-  CI= npm install -g --foreground-scripts "@beads/bd@$BD_VERSION"
+  CI='' npm install -g --foreground-scripts "@beads/bd@$BD_VERSION"
 elif [[ "$BD_VERSION" != latest ]] && ! bd version | grep -qF "$BD_VERSION"; then
   echo "warning: BD_VERSION=$BD_VERSION but $(bd version | head -1) is installed — bootstrap does not replace an existing bd" >&2
 fi
