@@ -69,6 +69,10 @@ BD_RANK = {"open": 0, "in_progress": 2, "review": 3, "closed": 4}
 # equivalent. sync never moves a bead out of one, except that `done` in yaml still closes it.
 BD_HELD = {"blocked", "deferred"}
 
+# The pair the bridge was last validated on end to end (scripts/canary.py). doctor warns on a
+# difference; it does not fail, since the bridge only reads public shapes.
+VALIDATED = {"BMAD": "6.12.0", "bd": "1.3.0"}
+
 META_STORY_KEY = "bmad_story_key"
 META_EPIC_KEY = "bmad_epic_key"
 META_GATE_KEY = "bmad_epic_gate"  # milestone task "Epic N complete" — tasks can only block tasks, not epics
@@ -856,6 +860,15 @@ def _title_of(bd: BD, bid: str) -> str:
         return ""
 
 
+def bmad_version(root: Path) -> str | None:
+    """`installation: version:` from BMAD's _bmad/_config/manifest.yaml."""
+    manifest = root / "_bmad" / "_config" / "manifest.yaml"
+    if not manifest.exists():
+        return None
+    m = re.search(r"^installation:\s*\n(?:[ \t]+.*\n)*?[ \t]+version:\s*[\"']?([\w.+-]+)", manifest.read_text(encoding="utf-8"), re.M)
+    return m.group(1) if m else None
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = project_root()
     planning, impl = bmm_paths(root)
@@ -880,6 +893,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         bd_version = subprocess.run(["bd", "version"], capture_output=True, text=True).stdout.strip()
         ok(f"bd on PATH ({bd_version})")
         m = re.search(r"(\d+)\.(\d+)\.(\d+)", bd_version)
+        installed_bd = ".".join(m.groups()) if m else "?"
         if m and tuple(map(int, m.groups())) < (1, 3, 0):
             warn("bd < 1.3 — `claim` needs `bd update --if-assignee` (1.3+) for a story in progress with no assignee")
     else:
@@ -887,6 +901,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         return 1
     check((root / ".beads" / "config.yaml").exists(), ".beads/ initialised", ".beads/ missing — run scripts/bootstrap.sh or `bd init`", fail)
     check((root / "_bmad" / "bmm" / "config.yaml").exists(), "_bmad/ installed", "_bmad/ missing — npx bmad-method install", fail)
+    installed = {"BMAD": bmad_version(root) or "?", "bd": installed_bd}
+    pair = " / ".join(f"{k} {v}" for k, v in installed.items())
+    want = " / ".join(f"{k} {v}" for k, v in VALIDATED.items())
+    check(installed == VALIDATED, f"{pair} — the validated pair", f"{pair} installed; the bridge was last validated on {want} — run `task test` and watch the first sync (see docs/BLUEPRINT.md §6)", warn)
     bd = BD(root)
     try:
         custom = bd.run("config", "get", "status.custom", json_out=False)

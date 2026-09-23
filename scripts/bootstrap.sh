@@ -5,6 +5,7 @@
 #   bash scripts/bootstrap.sh --server         # shared `dolt sql-server` for many concurrent writers
 #   bash scripts/bootstrap.sh --prefix cdq     # bead id prefix (default: repo directory name)
 #   bash scripts/bootstrap.sh --keep-readme    # never replace README.md with the project stub
+#   BMAD_VERSION=6.12.0 BD_VERSION=1.3.0 bash scripts/bootstrap.sh   # pin the pair (default: latest)
 #
 # Idempotent: safe to re-run after pulling template updates or upgrading bmad/bd.
 set -euo pipefail
@@ -12,6 +13,10 @@ set -euo pipefail
 PREFIX=""
 MODE_FLAGS=()
 KEEP_README=0
+# Unpinned by default so a new project never starts on a stale BMAD. `doctor` warns when the
+# installed pair differs from the one the bridge was last validated on.
+BMAD_VERSION="${BMAD_VERSION:-latest}"
+BD_VERSION="${BD_VERSION:-latest}"
 USER_NAME="${BMAD_USER_NAME:-$(git config user.name 2>/dev/null || echo "${USER:-}")}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -19,7 +24,7 @@ while [[ $# -gt 0 ]]; do
     --server) MODE_FLAGS+=(--server); shift ;;
     --user-name) USER_NAME="$2"; shift 2 ;;
     --keep-readme) KEEP_README=1; shift ;;
-    -h|--help) sed -n 2,9p "$0"; exit 0 ;;
+    -h|--help) sed -n 2,10p "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -42,16 +47,18 @@ if (( NODE_MAJOR < 20 || (NODE_MAJOR == 20 && NODE_MINOR < 12) )); then
 fi
 need uv    "https://docs.astral.sh/uv/  (curl -LsSf https://astral.sh/uv/install.sh | sh)"
 if ! command -v bd >/dev/null 2>&1; then
-  echo "bd not found — installing @beads/bd via npm (or: brew install beads)"
-  npm install -g @beads/bd
+  echo "bd not found — installing @beads/bd@$BD_VERSION via npm (or: brew install beads)"
+  npm install -g "@beads/bd@$BD_VERSION"
+elif [[ "$BD_VERSION" != latest ]] && ! bd version | grep -qF "$BD_VERSION"; then
+  echo "warning: BD_VERSION=$BD_VERSION but $(bd version | head -1) is installed — bootstrap does not replace an existing bd" >&2
 fi
 echo "bd:   $(bd version | head -1)"
 echo "node: $(node -v)   uv: $(uv --version)"
 [[ -d .git ]] || git init -q
 
-say "BMAD Method (npx bmad-method install → _bmad/, .claude/skills/)"
+say "BMAD Method $BMAD_VERSION (npx bmad-method install → _bmad/, .claude/skills/)"
 # --yes is non-interactive; re-running performs an update and keeps _bmad/custom/ untouched.
-npx -y bmad-method@latest install --yes --directory "$ROOT" --tools claude-code --modules bmm \
+npx -y "bmad-method@$BMAD_VERSION" install --yes --directory "$ROOT" --tools claude-code --modules bmm \
   --user-name "$USER_NAME" --output-folder _bmad-output >/dev/null
 mkdir -p _bmad-output/planning-artifacts _bmad-output/implementation-artifacts docs
 echo "installed: $(find .claude/skills -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ') skills; team overrides in _bmad/custom/"

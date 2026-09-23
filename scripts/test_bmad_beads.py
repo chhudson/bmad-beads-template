@@ -369,6 +369,18 @@ class PlanningMoleculeTests(unittest.TestCase):
             self.assertNotIn("title contains", text, skill)
 
 
+class BmadVersionTests(unittest.TestCase):
+    def test_reads_installation_version_not_a_module_version(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "_bmad" / "_config").mkdir(parents=True)
+            self.assertIsNone(bb.bmad_version(root))
+            (root / "_bmad" / "_config" / "manifest.yaml").write_text(
+                "installation:\n  installDate: x\n  version: 6.12.0\nmodules:\n  - name: core\n    version: 9.9.9\n",
+                encoding="utf-8")
+            self.assertEqual(bb.bmad_version(root), "6.12.0")
+
+
 class RankTests(unittest.TestCase):
     def test_vocab(self):
         self.assertLess(bb.BMAD_RANK["ready-for-dev"], bb.BMAD_RANK["in-progress"])
