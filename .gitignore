@@ -29,3 +29,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# --- template updates (scripts/update_from_template.py): backups and conflict copies ---
+.template-update/
