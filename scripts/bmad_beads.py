@@ -187,6 +187,9 @@ class BD:
     def close(self, issue_id: str, reason: str) -> None:
         self.run("close", issue_id, "--reason", reason, mutating=True)
 
+    def reopen(self, issue_id: str, reason: str) -> None:
+        self.run("reopen", issue_id, "--reason", reason, mutating=True)
+
     def dep_add(self, dependent: str, blocker: str) -> None:
         self.run("dep", "add", dependent, blocker, json_out=False, mutating=True)
 
@@ -490,6 +493,16 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"  + {eid}  {title}")
         epic_ids[e.num] = eid
 
+        # A story added to a finished epic (e.g. by correct-course): the epic has open work again,
+        # so its bead and its "Epic N complete" milestone reopen and dependent epics block again.
+        new = [s for s in e.stories if s.key not in idx.stories]
+        finished = [i for i in (existing, idx.gates.get(e.key)) if i and i.get("status") == "closed"]
+        if new and finished:
+            for i in finished:
+                bd.reopen(i["id"], f"new story {new[0].ref} added to Epic {e.num}")
+                i["status"] = "open"
+            print(f"  ! Epic {e.num} reopened — new story {new[0].ref}; epics that depend on it are blocked again")
+
         for s in e.stories:
             stitle = f"Story {s.ref}: {s.title}"
             existing = idx.stories.get(s.key)
@@ -698,6 +711,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
             continue
         if all(v == "done" for v in rows) and entries[ekey] != "done":
             ss.set(ekey, "done") and changes.append(f"{ekey}: yaml → done (all stories done)")
+        elif entries[ekey] == "done" and any(v in BMAD_RANK and v != "done" for v in rows):
+            ss.set(ekey, "in-progress") and changes.append(f"{ekey}: yaml done → in-progress (a story was added)")
         elif entries[ekey] == "backlog" and any(BMAD_RANK.get(v, 0) >= BMAD_RANK["in-progress"] for v in rows):
             ss.set(ekey, "in-progress") and changes.append(f"{ekey}: yaml backlog → in-progress (first story started)")
 

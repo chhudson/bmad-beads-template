@@ -175,6 +175,13 @@ an *export* for viewers and migration, not the source of truth; the template doe
   the sole writer of `sprint-status.yaml` during a run and adds `awaiting-operator`. The bridge
   treats unknown statuses as pass-through and never regresses, so running `sync` around a loop
   is safe. Wiring it fully (a `.bmad-loop/plugins/` stage hook calling `sync`) is a later step.
+- **A story added to a finished epic reopens it.** Once every story of Epic K is closed, `sync`
+  closes the "Epic K complete" milestone and the epic bead, and epics that depend on K become
+  ready. If `/bmad-correct-course` later adds a story to K, `import` reopens both
+  (`! Epic K reopened — …`), so dependent epics are blocked again, and `sync` moves the
+  `epic-K` row from `done` back to `in-progress`. A dependent story already in progress keeps
+  its claim; one still `ready-for-dev` drops back to `backlog` on the next sync. That is
+  intended: K has open work again, but check `status` after a correct-course.
 - **Epic-level dependencies cost edges.** "Epic 2 depends on Epic 1" is |E1| + |E2| edges via
   the milestone, not |E1|×|E2|. Fine at tens of stories; revisit if an epic has hundreds.
 
