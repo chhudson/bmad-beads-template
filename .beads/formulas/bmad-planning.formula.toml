@@ -3,7 +3,6 @@
 # Pour one per initiative so `bd ready` knows the next planning step, and so planning work
 # is visible in the same graph as delivery work:
 #
-#   bd cook bmad-planning
 #   bd mol pour bmad-planning --var initiative="cdq-v4 pilot"
 #
 # Each step names the BMAD skill to run. Human gates are where you (not the agent) sign off.

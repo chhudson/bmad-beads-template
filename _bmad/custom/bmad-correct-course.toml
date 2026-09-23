@@ -5,6 +5,7 @@
 
 persistent_facts = [
   "When a story is added or its dependencies change, keep the `**Depends on:**` lines in epics.md accurate — the beads graph is rebuilt from them. When a story is removed, close its bead with a reason rather than deleting it.",
+  "Never renumber or retitle existing stories: the number and title are the story's key (`{epic}-{story}-{slug}`) in sprint-status.yaml and beads, so inserting a story mid-epic would fork the key of every story after it. Append a new story with the next free number, or a letter suffix (`2.3a`) to place it next to a related story.",
 ]
 
 on_complete = "Run `uv run scripts/bmad_beads.py import` (adds new stories/deps; never deletes) then `uv run scripts/bmad_beads.py doctor` and show the user any drift it reports."

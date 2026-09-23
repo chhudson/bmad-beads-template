@@ -32,8 +32,9 @@ bash scripts/bootstrap.sh         # installs BMAD + beads, wires hooks, runs doc
 git add -A && git commit -m "bootstrap BMAD×beads"
 ```
 
-Prerequisites: git, Node ≥ 20.12, [uv](https://docs.astral.sh/uv/). `bd` is installed by the
-bootstrap if missing (`npm i -g @beads/bd` or `brew install beads`).
+Prerequisites: git, Node ≥ 20.12, [uv](https://docs.astral.sh/uv/), and [Task](https://taskfile.dev)
+for the `task …` shortcuts (optional: each task wraps one command you can run directly). `bd` is
+installed by the bootstrap if missing (`npm i -g @beads/bd` or `brew install beads`).
 
 Then in Claude Code:
 
@@ -86,8 +87,9 @@ stateDiagram-v2
 
 Status only moves forward, with exactly two sanctioned reversals: `ready-for-dev → backlog`
 (a blocker appeared) and `review → in-progress` (code-review sent the story back). Both
-directions are mirrored by `sync`; nothing else ever demotes a story, and a bead is never
-closed by hand.
+directions are mirrored by `sync`; nothing else ever demotes a story. A story bead is never
+closed by hand: `sync` closes it from the `done` code-review writes. The one exception is a
+story cut in correct-course, closed with `bd close <id> --reason "…"`.
 
 ## What's in the template
 

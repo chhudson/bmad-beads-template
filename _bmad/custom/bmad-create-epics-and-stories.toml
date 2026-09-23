@@ -5,7 +5,7 @@
 
 persistent_facts = [
   "DEPENDENCY CONVENTION (bmad-beads bridge): directly under any `### Story N.M:` heading whose work cannot start until other stories are finished, add one line `**Depends on:** A.B, C.D` listing the blocking story numbers. Under an epic heading that cannot start until a whole earlier epic is finished, add `**Depends on:** Epic K`. Only real blocking relationships — story order within an epic does NOT imply a dependency; independent stories are worked in parallel. Do not invent dependencies to make a sequence.",
-  "Story titles become stable keys (`{epic}-{story}-{slug}`) in sprint-status.yaml and beads. Once a story exists in beads, retitling it forks the key — prefer editing the body over the title after import.",
+  "Story titles become stable keys (`{epic}-{story}-{slug}`) in sprint-status.yaml and beads. Once a story exists in beads, retitling it forks the key — prefer editing the body over the title after import. Renumbering forks it too, and for every story after the change: to add a story to an existing epic, append it with the next free number or a letter suffix (`2.3a`); never renumber existing stories.",
 ]
 
 on_complete = "Run `uv run scripts/bmad_beads.py import --dry-run` from the project root and show the user the summary line. If they confirm, run it without --dry-run. This creates one beads epic per `## Epic N:` and one child task per `### Story N.M:`, wiring dependencies from the `Depends on:` lines. It is idempotent."
