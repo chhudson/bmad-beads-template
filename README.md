@@ -97,15 +97,20 @@ story cut in correct-course, closed with `bd close <id> --reason "…"`.
 AGENTS.md                      operating protocol for any agent (Claude Code, Codex, humans)
 CLAUDE.md                      points at AGENTS.md; project facts go below the line
 .claude/settings.json          SessionStart → bd prime; read-only bd + bridge commands pre-allowed
+.claude/commands/update-template.md          /update-template: take a new template release, resolve conflicts
 _bmad/custom/*.toml            BMAD overrides: dependency convention, claim-on-start, sync-on-complete
 .beads/formulas/bmad-planning.formula.toml   planning phases as a beads molecule
 scripts/bmad_beads.py          the bridge: import | sync | claim | status | doctor  (stdlib only)
-scripts/test_bmad_beads.py     unit tests for the parser, status mapping, and the sprint-status editor
-scripts/bootstrap.sh           idempotent setup
-Taskfile.yml                   task status | ready | import | sync | doctor | push | pull | plan
+scripts/test_bmad_beads.py     bridge tests: parser, sprint-status editor, import/sync/claim against a fake bd
+scripts/bootstrap.sh           idempotent setup (BMAD_VERSION / BD_VERSION pin the pair)
+scripts/canary.py              one story lifecycle against the installed BMAD + bd (weekly in CI)
+scripts/update_from_template.py   three-way merge of a newer template release into a project
+UPGRADING.md                   per-release steps the updater prints; .template-version records the release
+Taskfile.yml                   task status | ready | import | sync | doctor | test | canary | plan | template:update
 docs/BLUEPRINT.md              the design: ownership, data flow, failure modes, team modes
 docs/references/               vendored standards + library docs; README.md is the manifest (anti-AI-slop shipped)
 .github/workflows/bmad-beads-bridge.yml      CI for the BRIDGE only — add your project's own workflow
+.github/workflows/upstream-canary.yml        weekly canary against @latest BMAD + bd; opens an issue on failure
 ```
 
 `_bmad/` (skills, config) and `.beads/` (database) are created by the bootstrap, not shipped —
@@ -121,6 +126,40 @@ so the template never pins a stale BMAD or beads version.
   embedded mode is single-writer per clone.
 
 See `docs/BLUEPRINT.md` for the full design and the things that will bite you.
+
+## Updating from the template
+
+A repo made with "Use this template" shares no git history with the template, so it can't
+`git pull` a new release. The updater merges each file instead:
+
+```bash
+uv run scripts/update_from_template.py --dry-run   # what would change
+uv run scripts/update_from_template.py             # newest release (or --ref vX.Y.Z)
+```
+
+Or run `/update-template` in Claude Code, which runs the updater and then resolves any conflicts.
+Projects made before v0.3.0 don't have the script yet; run it from the template:
+`uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/main/scripts/update_from_template.py`.
+
+It works out which release the project came from (`.template-version`, or by matching files
+against the template's tags), then for each file the template changed:
+
+| Your copy | What happens |
+|---|---|
+| untouched since your release | replaced with the new version |
+| customised | three-way merged; your edits are kept. JSON is merged by key, `.gitignore` as a set of lines, and every merged file must still parse |
+| customised where the template also changed the same lines | **left exactly as it was.** The base, your and the new versions are saved to `.template-update/<timestamp>/conflicts/` and listed in `CONFLICTS.md`; `/update-template` merges them for you |
+| new in the template | added |
+| removed from the template, or deleted by you | kept as it is, and reported |
+
+`README.md` and `CLAUDE.md` are yours and never touched. To stop updates to a file you've taken
+over, list it (or a glob) in `.template-ignore`; the updater then only tells you when the template
+changes it. `--skip <glob>` does the same for one run.
+
+It refuses to start with uncommitted changes. Every run leaves `.template-update/<timestamp>/`
+with a backup of each file it changed, a `REPORT.md`, and an `undo.sh` that restores exactly those
+files and deletes the ones it added. Afterwards it runs the bridge tests and prints the release's
+manual steps from `UPGRADING.md`. Review with `git diff`, then commit.
 
 ## Status
 
