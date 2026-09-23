@@ -112,8 +112,8 @@ merge, survives `bmad-method install --action update`):
 | `bmad-product-brief` / `bmad-prd` / `bmad-architecture` | claim this phase's molecule bead if one exists | brief/PRD: anti-AI-slop checklist; architecture: `docs/references` manifest + grep-the-vendored-docs rule | close the bead, `bd remember` key decisions; PRD also names the human sign-off gate |
 | `bmad-create-epics-and-stories` | — | the `Depends on:` convention; keys are stable | `import --dry-run`, confirm, `import` |
 | `bmad-sprint-planning` | — | `ready-for-dev` is derived, never hand-set | `import` + `sync` + `status` |
-| `bmad-build` / `bmad-build-auto` | `bmad_beads.py claim <story_key>` — exit 1 halts the build if blocked, held by someone else, in review, or done | `docs/references` manifest + grep-the-vendored-docs rule; discovered work → beads; insights → `bd remember` | `sync`, `bd dolt push` |
-| `bmad-code-review` | — | `[Defer]` findings → beads | `sync` |
+| `bmad-build` / `bmad-build-auto` | `bmad_beads.py claim <story_key>` — exit 1 halts the build if blocked, held by someone else, in review, or done | `docs/references` manifest + grep-the-vendored-docs rule; discovered work → beads; insights → `bd remember`; deferred-work entries point at a bead (build-auto's list is identical, checked by a test) | `sync`, local commit, `bd dolt push`; build-auto first marks a stalled story `blocked` |
+| `bmad-code-review` | — | `[Defer]` findings → beads; deferred-work entries point at a bead | `sync`, `bd dolt push` |
 | `bmad-retrospective` | — | — | `sync`; action items → chores; lessons → `bd remember` |
 | `bmad-correct-course` | — | keep `Depends on:` lines true; close, don't delete | `import` + `doctor` |
 
