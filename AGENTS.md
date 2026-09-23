@@ -83,7 +83,8 @@ git commit -m "<msg> (<bead-id>)"
 
 Planning steps are themselves beads: `bd mol pour bmad-planning --var initiative="<name>"`
 creates brief → PRD → sign-off gate → architecture → epics → sprint plan → import as a chain, so
-`bd ready` tells you the next planning move too.
+`bd ready` tells you the next planning move too. Each step is labelled `bmad-step:<id>`; find a
+step by that label (`bd ready --label bmad-step:prd`), never by title.
 
 When writing `epics.md`, mark real blocking relationships with `**Depends on:** 1.3, 2.1` under
 a story (or `**Depends on:** Epic 1` under an epic). Story order is **not** a dependency.

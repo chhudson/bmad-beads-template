@@ -134,6 +134,14 @@ planning move" the same way it answers "what is the next story", and the human s
 gate the graph knows about rather than a memory in somebody's head. Phase 4 is deliberately not
 in the formula — real stories come from `import`.
 
+Every step is labelled `bmad-step:<id>`, and the brief / PRD / architecture overrides claim
+their step with `bd ready --label bmad-step:<id>`, not by title: "PRD sign-off" contains "prd",
+and an initiative's own name can contain any of the phase words. The sign-off is two beads, both
+closed by a human: a `gate` bead (`await_type: human`, listed by `bd gate list`) blocking the
+"PRD sign-off" step. Closing the gate makes the step ready; closing the step unblocks
+architecture. A molecule poured before the labels existed has none, so the overrides find nothing
+and carry on without it; re-pour it, or close its steps by hand.
+
 ## 5. Team modes
 
 **Embedded (default).** One Dolt database per clone under `.beads/embeddeddolt/` (gitignored).

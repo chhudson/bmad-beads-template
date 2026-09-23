@@ -6,7 +6,7 @@
 [workflow]
 
 activation_steps_append = [
-  "bmad-beads bridge: check `bd ready` for an open planning bead for this phase (a task whose title contains 'brief' from the bmad-planning molecule). If one exists, `bd update <id> --claim` it now. If none exists, continue silently — the molecule is optional.",
+  "bmad-beads bridge: run `bd ready --label bmad-step:brief --json`. That label is set only on the 'brief' step of the bmad-planning molecule; never pick a planning bead by its title, and never claim a bead of type `gate` or a `bmad-step:prd-signoff` step — those are human sign-offs. Exactly one result: `bd update <id> --claim` it now. More than one (several initiatives poured): ask the user which initiative this run is for, and claim only that one. None: continue silently — the molecule is optional.",
 ]
 
 persistent_facts = [
