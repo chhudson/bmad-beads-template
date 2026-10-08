@@ -5,6 +5,8 @@
 #   bash scripts/bootstrap.sh --server         # shared `dolt sql-server` for many concurrent writers
 #   bash scripts/bootstrap.sh --prefix cdq     # bead id prefix (default: repo directory name)
 #   bash scripts/bootstrap.sh --keep-readme    # never replace README.md with the project stub
+#   bash scripts/bootstrap.sh --local-only     # beads never syncs, even once the code has a remote
+#   bash scripts/bootstrap.sh --template-dev   # in the template repo itself: origin may be the template
 #   BMAD_VERSION=6.12.0 BD_VERSION=1.3.0 bash scripts/bootstrap.sh   # pin the pair (default: latest)
 #
 # Idempotent: safe to re-run after pulling template updates or upgrading bmad/bd.
@@ -13,6 +15,8 @@ set -euo pipefail
 PREFIX=""
 MODE_FLAGS=()
 KEEP_README=0
+TEMPLATE_DEV=0
+LOCAL_ONLY=0
 # Unpinned by default so a new project never starts on a stale BMAD. `doctor` warns when the
 # installed pair differs from the one the bridge was last validated on.
 BMAD_VERSION="${BMAD_VERSION:-latest}"
@@ -24,7 +28,9 @@ while [[ $# -gt 0 ]]; do
     --server) MODE_FLAGS+=(--server); shift ;;
     --user-name) USER_NAME="$2"; shift 2 ;;
     --keep-readme) KEEP_README=1; shift ;;
-    -h|--help) sed -n 2,10p "$0"; exit 0 ;;
+    --template-dev) TEMPLATE_DEV=1; shift ;;
+    --local-only) LOCAL_ONLY=1; shift ;;
+    -h|--help) sed -n 2,12p "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -38,6 +44,21 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing: $1 — $2" >&2; exi
 
 say "Preflight"
 need git   "https://git-scm.com"
+# A plain `git clone` of the template (the obvious way to keep a project off GitHub) leaves origin
+# pointing at the template. `bd init` would record it as the beads sync remote, and build and
+# code-review run `bd dolt push`, sending this project's beads to the template repo (#49).
+ORIGIN="$(git remote get-url origin 2>/dev/null || true)"
+TEMPLATE_RE='[:/]chhudson/bmad-beads-template(\.git)?/?$'
+if [[ "$ORIGIN" =~ $TEMPLATE_RE ]] && (( ! TEMPLATE_DEV )); then
+  cat >&2 <<EOF
+origin is the template repo ($ORIGIN), not this project's.
+beads would sync to it, and builds run \`bd dolt push\`. Point origin somewhere else first:
+  git remote remove origin                # keep the project local: beads stays in .beads/
+  git remote set-url origin <your-repo>   # or use your own remote
+then re-run bootstrap. (Working on the template itself? Add --template-dev.)
+EOF
+  exit 1
+fi
 need node  "Node 20.12+ (https://nodejs.org)"
 NODE_V="$(node -v | sed 's/^v//')"
 IFS=. read -r NODE_MAJOR NODE_MINOR _ <<<"$NODE_V"
@@ -81,6 +102,10 @@ fi
 # `review` is BMAD's between-build-and-code-review state; beads needs it as a custom status.
 bd config set status.custom "review:wip" >/dev/null
 bd config get status.custom >/dev/null && echo "custom status: review (wip)"
+# Lives in .beads/config.yaml, which is committed, so every clone keeps it. Undo: bd config unset dolt.local-only
+if (( LOCAL_ONLY )); then
+  bd config set dolt.local-only true >/dev/null && echo "local only: bd dolt push skips every remote (dolt.local-only)"
+fi
 
 say "Claude Code hook (bd prime on SessionStart)"
 # .claude/settings.json shipped with the template already carries the hook; `bd setup claude`
@@ -99,9 +124,8 @@ say "Project README"
 # A clone of the template still carries the template's own README, which describes
 # the template rather than this project. Replace it with a stub once, on first run.
 # Never in the template repo itself (dogfooding bootstrap there would overwrite the template's README).
-ORIGIN="$(git remote get-url origin 2>/dev/null || true)"
-if (( KEEP_README )) || [[ "$ORIGIN" =~ [:/]chhudson/bmad-beads-template(\.git)?$ ]]; then
-  echo "README.md kept (--keep-readme, or this is the template repo itself)"
+if (( KEEP_README || TEMPLATE_DEV )); then
+  echo "README.md kept (--keep-readme or --template-dev)"
 elif grep -q '^# bmad-beads-template' README.md 2>/dev/null; then
   cat > README.md <<STUB
 # ${PREFIX}
@@ -124,11 +148,16 @@ fi
 say "Doctor"
 uv run --quiet scripts/bmad_beads.py doctor || true
 
+if (( LOCAL_ONLY )); then
+  SYNC_HINT="beads stays on this machine (--local-only); doctor shows it"
+else
+  SYNC_HINT="Sync beads across machines: bd dolt push  (bd init recorded your git remote as sync.remote)"
+fi
 cat <<EOF
 
 Next:
   1. Commit:  git add -A && git commit -m "bootstrap BMAD×beads"
   2. Plan:    bd mol pour bmad-planning --var initiative="<name>"
               then open Claude Code and run /bmad-help
-  3. Sync beads across machines: bd dolt push  (bd init recorded your git remote as sync.remote)
+  3. $SYNC_HINT
 EOF

@@ -27,6 +27,10 @@ the steps below for every release it crosses. See the README section "Updating f
 - **`.github/dependabot.yml` is new**: weekly PRs that bump the pinned actions. Delete it and list
   it in `.template-ignore` if you'd rather bump them by hand.
 - **`SECURITY.md` is new.** Replace its reporting section with your project's own policy.
+- **`doctor` now says where beads syncs**, and fails when a Dolt remote is the template repo
+  (`bd dolt push` would publish your beads there). Run `uv run scripts/bmad_beads.py doctor` once.
+  To keep beads off every remote from now on: `bd config set dolt.local-only true`, which is what the
+  new `bootstrap.sh --local-only` sets.
 - Nothing to do for the rest:
   - The updater now recognises a project made from `main` between releases even though
     `.template-version` names the release before. It also leaves alone a project that is newer

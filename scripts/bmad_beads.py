@@ -73,6 +73,10 @@ BD_HELD = {"blocked", "deferred"}
 # difference; it does not fail, since the bridge only reads public shapes.
 VALIDATED = {"BMAD": "6.12.0", "bd": "1.3.0"}
 
+# The template's own repo. A project whose beads remote is this would publish its beads there on
+# every `bd dolt push` (#49); bootstrap.sh refuses such an origin with the same pattern.
+TEMPLATE_REPO = re.compile(r"[:/]chhudson/bmad-beads-template(\.git)?/?$", re.I)
+
 META_STORY_KEY = "bmad_story_key"
 META_EPIC_KEY = "bmad_epic_key"
 META_GATE_KEY = "bmad_epic_gate"  # milestone task "Epic N complete" — tasks can only block tasks, not epics
@@ -869,6 +873,22 @@ def bmad_version(root: Path) -> str | None:
     return m.group(1) if m else None
 
 
+def sync_remote_finding(remotes: list[dict], local_only: bool = False) -> tuple[str, str]:
+    """doctor's verdict on where `bd dolt push` sends this project's beads. Push reads the Dolt
+    remotes (`bd dolt remote list`), not `sync.remote`, and skips them all under
+    `dolt.local-only` (set by `bootstrap.sh --local-only`)."""
+    if local_only:
+        return "ok", "beads is local only (dolt.local-only): `bd dolt push` skips even with a remote"
+    for r in remotes:
+        if TEMPLATE_REPO.search(r.get("url") or ""):
+            return "fail", (f"beads syncs to the template repo ({r['url']}): `bd dolt push` would publish this "
+                            f"project's beads there. Run `bd dolt remote remove {r['name']}` and "
+                            "`bd config unset sync.remote`, then add your own remote or stay local")
+    if remotes:
+        return "ok", "beads syncs to " + ", ".join(f"{r['name']} ({r['url']})" for r in remotes)
+    return "ok", "beads is local only: no Dolt remote, so `bd dolt push` skips"
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = project_root()
     planning, impl = bmm_paths(root)
@@ -911,6 +931,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         check("review" in (custom or ""), "beads custom status `review` configured", "beads lacks custom status `review` — bd config set status.custom review:wip", fail)
     except RuntimeError as ex:
         warn(f"could not read beads config: {ex}")
+    try:
+        flag = bd.run("config", "get", "dolt.local-only")
+        local_only = isinstance(flag, dict) and str(flag.get("value", "")).lower() == "true"
+        level, msg = sync_remote_finding(bd.run("dolt", "remote", "list") or [], local_only)
+        (fail if level == "fail" else ok)(msg)
+    except RuntimeError as ex:
+        warn(f"could not list beads remotes: {ex}")
     settings = root / ".claude" / "settings.json"
     if settings.exists() and "bd prime" in settings.read_text(encoding="utf-8"):
         ok("Claude Code SessionStart hook → bd prime")

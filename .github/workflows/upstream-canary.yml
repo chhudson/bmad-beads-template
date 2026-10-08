@@ -61,9 +61,15 @@ jobs:
           git init -q
           git remote add origin https://example.invalid/canary.git
       - name: Bootstrap (BMAD ${{ env.BMAD_VERSION }}, bd ${{ env.BD_VERSION }})
-        run: cd "$PROJECT" && bash scripts/bootstrap.sh --prefix canary
+        run: cd "$PROJECT" && bash scripts/bootstrap.sh --prefix canary --local-only
       - name: Canary
         run: cd "$PROJECT" && uv run scripts/canary.py
+      # --local-only (#49): with origin set, `bd dolt push` must still skip rather than try it.
+      - name: Local-only holds with a remote present
+        run: |
+          cd "$PROJECT"
+          bd config get dolt.local-only --json | jq -e '.value == "true"'
+          bd dolt push
       - name: Open or update the canary issue
         if: failure() && github.event_name == 'schedule'
         env:
