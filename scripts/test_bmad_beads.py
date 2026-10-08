@@ -320,6 +320,34 @@ class BDWrapperTests(unittest.TestCase):
         self.assertEqual(cm.exception.returncode, bb.BD_GUARD_MISMATCH)
 
 
+class SyncRemoteTests(unittest.TestCase):
+    """#49: doctor says where `bd dolt push` sends this project's beads, and fails on the template."""
+
+    def test_template_remote_fails(self):
+        for url in ("git+https://github.com/chhudson/bmad-beads-template.git",
+                    "git+ssh://git@github.com/chhudson/bmad-beads-template.git",
+                    "git@github.com:chhudson/bmad-beads-template.git"):
+            with self.subTest(url):
+                level, msg = bb.sync_remote_finding([{"name": "origin", "url": url}])
+                self.assertEqual(level, "fail")
+                self.assertIn("bd dolt remote remove origin", msg)
+
+    def test_own_remote_ok(self):
+        level, msg = bb.sync_remote_finding([{"name": "origin", "url": "git+https://github.com/acme/bmad-beads-template-fork.git"}])
+        self.assertEqual(level, "ok")
+        self.assertIn("acme/bmad-beads-template-fork", msg)
+
+    def test_no_remote_is_local_only(self):
+        self.assertEqual(bb.sync_remote_finding([])[0], "ok")
+        self.assertIn("local only", bb.sync_remote_finding([])[1])
+
+    def test_local_only_flag_wins_over_any_remote(self):
+        # `bd dolt push` skips every remote under dolt.local-only, the template's included.
+        level, msg = bb.sync_remote_finding([{"name": "origin", "url": "git@github.com:chhudson/bmad-beads-template.git"}], local_only=True)
+        self.assertEqual(level, "ok")
+        self.assertIn("dolt.local-only", msg)
+
+
 class OverrideTests(unittest.TestCase):
     """#25: bmad-build-auto runs the same build unattended, so it carries the same rules."""
 

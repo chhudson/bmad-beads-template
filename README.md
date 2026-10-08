@@ -43,6 +43,40 @@ Then in Claude Code:
 bd mol pour bmad-planning --var initiative="my thing"   # optional: planning steps as beads
 ```
 
+### Keeping a project off GitHub
+
+`gh repo create --template` makes a GitHub repo. For a project that should stay on your machine,
+for example because it holds client data, copy the template and drop its history instead:
+
+```bash
+git clone --depth 1 https://github.com/chhudson/bmad-beads-template my-project
+cd my-project
+rm -rf .git && git init -q        # drops the template's history and its origin
+bash scripts/bootstrap.sh --local-only
+git add -A && git commit -m "bootstrap BMAD×beads"
+```
+
+Skip the `rm -rf .git` and bootstrap stops: `origin` would still be the template, beads would
+record it as its sync remote, and every build ends with `bd dolt push`.
+
+`--local-only` sets beads' `dolt.local-only`, so `bd dolt push` skips every remote, including any
+you add later. Without it, a project with no remote is local too, but only until it gets one.
+`uv run scripts/bmad_beads.py doctor` shows which of these you have.
+
+For a backup, any git remote you control works, not only GitHub. A bare repo on an encrypted
+drive, for example:
+
+```bash
+git init --bare /Volumes/Backup/my-project.git
+git remote add origin /Volumes/Backup/my-project.git
+git push -u origin main
+bd config unset dolt.local-only    # only if beads should go there too
+bd dolt remote add origin git+file:///Volumes/Backup/my-project.git
+bd dolt push
+```
+
+Push the code first: beads can't push to a repo that has no branch yet.
+
 ## The loop
 
 ```mermaid
@@ -126,6 +160,8 @@ so the template never pins a stale BMAD or beads version.
 - **Shared server — `scripts/bootstrap.sh --server`.** Points every clone (and every parallel
   agent on one machine) at one `dolt sql-server`. Use when many agents write concurrently;
   embedded mode is single-writer per clone.
+- **Local only — `scripts/bootstrap.sh --local-only`.** Beads never leaves the machine, even if
+  the code has a remote. See [Keeping a project off GitHub](#keeping-a-project-off-github).
 
 See `docs/BLUEPRINT.md` for the full design and the things that will bite you.
 
