@@ -247,23 +247,19 @@ def detect_base(root: Path, repo: Path, tags: list[str]) -> tuple[str, str]:
     if vf.is_file():
         ref = vf.read_text(encoding="utf-8").split()[0]
         if git("rev-parse", "-q", "--verify", f"{ref}^{{commit}}", cwd=repo, check=False).strip():
+            later = made_after(root, repo, ref, tags)
+            if later:
+                short = git("rev-parse", "--short=10", later[0], cwd=repo).strip()
+                return short, (f"{VERSION_FILE} says {ref}, but {later[1]} file(s) changed since then "
+                               f"match template commit {short} exactly")
             return ref, f"{VERSION_FILE}"
         print(f"! {VERSION_FILE} names {ref!r}, which the template does not have — guessing from file contents")
     # Score every template commit, not just releases: a project made from `main` between
     # releases matches that commit exactly. Blob ids make this one `ls-tree` per commit.
     commits = git("rev-list", "--reverse", "HEAD", *tags, cwd=repo).split()
     commits = list(dict.fromkeys(commits))  # oldest first; strictly-greater keeps the oldest on a tie
-    paths: set[str] = set()
-    trees = {}
-    for c in commits:
-        trees[c] = {}
-        for line in git("ls-tree", "-r", c, cwd=repo).splitlines():
-            meta, path = line.split("\t", 1)
-            if path not in PROJECT_OWNED:
-                trees[c][path] = meta.split()[2]
-                paths.add(path)
-    present = sorted(p for p in paths if (root / p).is_file())
-    local_ids = dict(zip(present, git("hash-object", "--no-filters", "--", *present, cwd=root).split())) if present else {}
+    trees = {c: tree_ids(repo, c) for c in commits}
+    local_ids = local_blob_ids(root, set().union(*trees.values()))
     best, best_n = None, 0
     for c in commits:
         n = sum(1 for p, blob in trees[c].items() if local_ids.get(p) == blob)
@@ -277,6 +273,42 @@ def detect_base(root: Path, repo: Path, tags: list[str]) -> tuple[str, str]:
     short = git("rev-parse", "--short=10", best, cwd=repo).strip()
     after = release_of(repo, short, tags)
     return short, f"guessed: {best_n} files match template commit {short}" + (f" (after {after})" if after else "") + " exactly"
+
+
+def made_after(root: Path, repo: Path, ref: str, tags: list[str]) -> tuple[str, int] | None:
+    """The template commit after release `ref` that this project was made from, when its files
+    say so. "Use this template" copies the tip of main, whose .template-version names the last
+    release until the next one, so a project made between releases records a base older than
+    its files (#52). A later commit counts only if, of the files it changed since `ref`, the
+    project has none at `ref`'s version and at least one at the commit's."""
+    later = git("rev-list", "--reverse", "--ancestry-path", f"^{ref}", "HEAD", *tags, cwd=repo).split()
+    base = tree_ids(repo, ref)
+    best, best_n = None, 0
+    for c in dict.fromkeys(later):
+        tree = tree_ids(repo, c)
+        changed = {p for p in base.keys() | tree.keys() if base.get(p) != tree.get(p)}
+        local = local_blob_ids(root, changed)
+        if any(local.get(p) == base.get(p) for p in changed):  # a missing file matches a missing one
+            continue
+        n = sum(1 for p in changed if local.get(p) == tree.get(p))
+        if n > best_n:
+            best, best_n = c, n
+    return (best, best_n) if best else None
+
+
+def tree_ids(repo: Path, commit: str) -> dict[str, str]:
+    """path → blob id for every template file at `commit`, except the ones a project owns."""
+    ids = {}
+    for line in git("ls-tree", "-r", commit, cwd=repo).splitlines():
+        meta, path = line.split("\t", 1)
+        if path not in PROJECT_OWNED:
+            ids[path] = meta.split()[2]
+    return ids
+
+
+def local_blob_ids(root: Path, paths: set[str]) -> dict[str, str]:
+    present = sorted(p for p in paths if (root / p).is_file())
+    return dict(zip(present, git("hash-object", "--no-filters", "--", *present, cwd=root).split())) if present else {}
 
 
 def release_of(repo: Path, ref: str, tags: list[str]) -> str | None:
@@ -341,6 +373,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"template: {base_ref} → {ref}  (base {how})")
         if git("rev-parse", f"{base_ref}^{{commit}}", cwd=repo) == git("rev-parse", f"{ref}^{{commit}}", cwd=repo):
             print("already up to date.")
+            return 0
+        if not git("rev-list", "-n1", f"{base_ref}..{ref}", cwd=repo).strip():
+            # Made from main after `ref`: merging "to" it would undo the newer template changes.
+            print(f"already up to date: this project is newer than {ref}. Wait for the next release.")
             return 0
         ignore = [*args.skip]
         if (root / IGNORE_FILE).is_file():

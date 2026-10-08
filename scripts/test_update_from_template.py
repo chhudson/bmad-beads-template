@@ -306,6 +306,39 @@ class BetweenReleasesTests(unittest.TestCase):
         self.assertEqual(self.run_update("--base", self.mid, "--dry-run"), 0, self.out.getvalue())
         self.assertIn(f"{self.mid} → v0.2.0", self.out.getvalue())
 
+    def test_version_file_from_main_still_finds_the_commit(self):
+        # #52: the template ships .template-version, and on main between releases it still names
+        # the last release. Trusting it alone made the mid-release fix a false conflict.
+        (self.proj / uft.VERSION_FILE).write_text("v0.1.0\n")
+        commit(self.proj, "template-version as main shipped it")
+        self.assertEqual(self.run_update(), 0, self.out.getvalue())
+        out = self.out.getvalue()
+        self.assertIn(f"template commit {self.mid}", out)
+        self.assertNotIn("CONFLICT", out)
+        self.assertEqual((self.proj / "scripts" / "untouched.sh").read_text(), "echo v2\n")
+
+    def test_version_file_kept_when_the_files_are_the_release(self):
+        # A project still holding the release's copy of a file the later commit changed was made
+        # from the release, not from that commit.
+        (self.proj / uft.VERSION_FILE).write_text("v0.1.0\n")
+        (self.proj / "scripts" / "untouched.sh").write_text("echo v1\n")
+        commit(self.proj, "made from the release")
+        self.assertEqual(self.run_update("--dry-run"), 0, self.out.getvalue())
+        self.assertIn("(base .template-version)", self.out.getvalue())
+
+    def test_project_newer_than_the_newest_release_is_left_alone(self):
+        # Made from main after the newest release: updating "to" that release would go backwards.
+        write_tree(self.tmpl, {"scripts/untouched.sh": "echo post\n"})
+        commit(self.tmpl, "after v0.2.0")
+        for path in set(V1) - set(V2):
+            (self.proj / path).unlink()
+        write_tree(self.proj, {**V2, "README.md": "# acme\n", "scripts/untouched.sh": "echo post\n",
+                               uft.VERSION_FILE: "v0.2.0\n"})
+        commit(self.proj, "project from main after v0.2.0")
+        self.assertEqual(self.run_update(), 0, self.out.getvalue())
+        self.assertIn("already up to date", self.out.getvalue())
+        self.assertEqual((self.proj / "scripts" / "untouched.sh").read_text(), "echo post\n")
+
 
 class DocsPinTests(unittest.TestCase):
     """#46: the docs must run the release's own updater, not whatever is on main."""

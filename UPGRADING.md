@@ -18,6 +18,22 @@ leading `!` in the prompt, then run `/update-template` to resolve conflicts and 
 It merges each file with the project's own changes, leaves conflicts untouched for review, and prints
 the steps below for every release it crosses. See the README section "Updating from the template".
 
+## Unreleased
+
+- **Add `@AGENTS.md` to your `CLAUDE.md`.** Claude Code reads `AGENTS.md` by itself only in a
+  project with no `CLAUDE.md`, so until now the protocol reached the agent only when it chose to
+  open the file. The updater never touches `CLAUDE.md`: replace the line
+  "Read `AGENTS.md` first — …" with `@AGENTS.md` on a line of its own.
+- **`.github/dependabot.yml` is new**: weekly PRs that bump the pinned actions. Delete it and list
+  it in `.template-ignore` if you'd rather bump them by hand.
+- **`SECURITY.md` is new.** Replace its reporting section with your project's own policy.
+- Nothing to do for the rest:
+  - The updater now recognises a project made from `main` between releases even though
+    `.template-version` names the release before. It also leaves alone a project that is newer
+    than the newest release.
+  - The canary creates its issue labels when they're missing.
+  - `/bmad-build` skips the claim for a freeform change that has no story.
+
 ## v0.3.1
 
 - **The upstream canary's weekly run is now opt-in** outside the template repo. Nothing to do if you

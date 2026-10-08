@@ -3,11 +3,12 @@
 # that scripts/** still passes. Add your project's own workflow beside this one —
 # nothing in this file will run code outside scripts/.
 #
-# Runs on every PR and every push to main (no path filter) on purpose: the `test` job is a
-# required status check on main, and a required check that never runs blocks
-# the merge. It takes about ten seconds.
+# Runs on every PR and every push to main (no path filter) on purpose: in the template repo the
+# `test` job is a required status check on main, and a required check that never runs blocks
+# the merge. It takes about ten seconds. A repo made from the template gets the files but not
+# the settings, so it has no required checks until you add them (Settings → Rules).
 #
-# Actions are pinned by commit SHA (tag in the comment); bump both together.
+# Actions are pinned by commit SHA (tag in the comment); Dependabot bumps both (.github/dependabot.yml).
 name: bridge tests
 on:
   push:

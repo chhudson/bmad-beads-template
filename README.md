@@ -95,7 +95,8 @@ story cut in correct-course, closed with `bd close <id> --reason "…"`.
 
 ```
 AGENTS.md                      operating protocol for any agent (Claude Code, Codex, humans)
-CLAUDE.md                      points at AGENTS.md; project facts go below the line
+CLAUDE.md                      imports AGENTS.md (@AGENTS.md); project facts go below the line
+SECURITY.md                    how to report a vulnerability; what runs without asking (hooks, allowlist, workflows)
 .claude/settings.json          SessionStart → bd prime; read-only bd + bridge commands pre-allowed
 .claude/commands/update-template.md          /update-template: take a new template release, resolve conflicts
 _bmad/custom/*.toml            BMAD overrides: dependency convention, claim-on-start, sync-on-complete
@@ -111,6 +112,7 @@ docs/BLUEPRINT.md              the design: ownership, data flow, failure modes, 
 docs/references/               vendored standards + library docs; README.md is the manifest (anti-AI-slop shipped)
 .github/workflows/bmad-beads-bridge.yml      CI for the BRIDGE only — add your project's own workflow
 .github/workflows/upstream-canary.yml        weekly canary against @latest BMAD + bd (opt-in outside the template: UPSTREAM_CANARY=on)
+.github/dependabot.yml                       weekly PRs bumping the SHA-pinned actions
 ```
 
 `_bmad/` (skills, config) and `.beads/` (database) are created by the bootstrap, not shipped —

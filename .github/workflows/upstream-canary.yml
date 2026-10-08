@@ -11,7 +11,7 @@
 # filing issues against itself: set the repository variable UPSTREAM_CANARY to `on`
 # (Settings → Secrets and variables → Actions → Variables). Manual and PR runs always work.
 #
-# Actions are pinned by commit SHA (tag in the comment); bump them with bmad-beads-bridge.yml.
+# Actions are pinned by commit SHA (tag in the comment); Dependabot bumps both (.github/dependabot.yml).
 name: upstream canary
 on:
   schedule:
@@ -78,6 +78,9 @@ jobs:
 
           Reproduce locally in a throwaway clone: \`bash scripts/bootstrap.sh && uv run scripts/canary.py\`."
           title="Upstream canary failing"
+          # A repo made from the template has GitHub's default labels, not the template's, and
+          # `gh issue create` refuses a label the repo lacks. Create both; "already exists" is fine.
+          for label in bug bootstrap; do gh label create "$label" --repo "$GITHUB_REPOSITORY" 2>/dev/null || true; done
           existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"

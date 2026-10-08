@@ -338,6 +338,12 @@ class OverrideTests(unittest.TestCase):
         for step in ("bmad_beads.py sync", "bd dolt push", "--status blocked"):
             self.assertIn(step, on_complete)
 
+    def test_freeform_build_skips_the_claim(self):
+        # #52: bmad-build's freeform route never sets story_key; the guard must say what then.
+        guard = self.load("bmad-build")["activation_steps_append"][0]
+        self.assertIn("leaves `story_key` unset", guard)
+        self.assertIn("skip this claim", guard)
+
 
 class TomlSyntaxTests(unittest.TestCase):
     """#29: BMAD silently skips an override it cannot parse, so a typo would switch the bridge off unnoticed."""
