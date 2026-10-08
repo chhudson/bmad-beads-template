@@ -1,6 +1,9 @@
 # Project instructions for Claude Code
 
-Read `AGENTS.md` first — it is the operating protocol for BMAD × beads in this repo.
+@AGENTS.md
+
+`AGENTS.md`, imported above, is the operating protocol for BMAD × beads in this repo. The import
+is what loads it: Claude Code reads `AGENTS.md` on its own only when there is no `CLAUDE.md`.
 
 - Planning: BMAD skills (`/bmad-help` lists them). Outputs land in `_bmad-output/`.
 - Execution state: beads (`bd`). `bd prime` runs on every session start via `.claude/settings.json`.

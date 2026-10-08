@@ -59,6 +59,11 @@ check; beads lets you claim a blocked bead). `--force` exists for deliberate ove
 On completion the build runs `sync`, so the bead follows the story. Then `/bmad-code-review` when
 the story is in `review`.
 
+A change too small for a story (a typo, a config tweak, a one-file fix) doesn't need one:
+`/bmad-build <what to change>` takes BMAD's freeform route, which has no story key, so there is
+nothing to claim and no bead to create. The local commit is the record. Anything it turns up
+that is out of scope still goes to beads.
+
 ## While working
 
 - Out-of-scope work you discover: `bd create "<title>" -t task --deps discovered-from:<story-bead> -l discovered`. Keep going. Always a **top-level** bead — a child inherits the parent's labels (including `story`) and corrupts `bd ready --label story`.

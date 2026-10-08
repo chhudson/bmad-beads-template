@@ -1,0 +1,9 @@
+# Keeps the SHA-pinned actions in .github/workflows current: one PR per outdated action, with
+# the SHA and its version comment bumped together. A project made from the template gets this
+# too; delete it (and list it in .template-ignore) if you'd rather bump by hand.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
