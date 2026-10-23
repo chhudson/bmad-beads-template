@@ -29,6 +29,12 @@ of what it did and an undo.sh that puts back exactly those files and nothing els
   uv run scripts/update_from_template.py --ref v0.3.0 --dry-run
   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/main/scripts/update_from_template.py
                                                           # a project older than this script
+
+--install adds the template to an existing repo that was not made from it. The base is empty, so
+every template file is new: one the repo lacks is added, `.json` is merged by key and `.gitignore`
+as a set of lines, and any other file the repo already has is a conflict, left exactly as it was.
+README.md and LICENSE are never written, CLAUDE.md only when the repo has none. The same safety
+as an update applies: a clean tree first, then backups, REPORT.md and undo.sh.
 """
 from __future__ import annotations
 
@@ -102,6 +108,23 @@ def merge_text(base: bytes, local: bytes, new: bytes, union: bool = False) -> tu
         res = subprocess.run(["git", "merge-file", "-q", *(["--union"] if union else []), "-L", "local", "-L", "base",
                               "-L", "template", str(p["local"]), str(p["base"]), str(p["new"])], capture_output=True)
         return p["local"].read_bytes(), res.returncode == 0
+
+
+def merge_line_sets(local: bytes, new: bytes) -> bytes:
+    """A `.gitignore` on install, with no base: the repo's file as it is, then each blank-line block
+    of the template's that has a pattern the repo lacks, with the block's comments and only the
+    missing patterns, in the template's order."""
+    have = {ln.strip() for ln in local.decode("utf-8").splitlines()}
+    out = []
+    for block in re.split(r"\n[ \t]*\n", new.decode("utf-8").strip("\n")):
+        lines = block.splitlines()
+        missing = [ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#") and ln.strip() not in have]
+        if missing:
+            out.append("\n".join(ln for ln in lines if ln.lstrip().startswith("#") or ln in missing))
+    if not out:
+        return local
+    text = local.decode("utf-8").rstrip("\n")
+    return ((text + "\n\n" if text else "") + "\n\n".join(out) + "\n").encode("utf-8")
 
 
 def merge_json_value(base, local, new):
@@ -190,6 +213,7 @@ class Plan:
     actions: list[tuple[str, str]] = field(default_factory=list)  # (label, path)
     conflicts: dict[str, tuple[bytes | None, bytes, bytes]] = field(default_factory=dict)  # path → base, local, new
     skipped_upstream: list[str] = field(default_factory=list)  # ignored files the template changed
+    manual: list[str] = field(default_factory=list)  # steps left to the user (install)
 
     def note(self, label: str, path: str) -> None:
         self.actions.append((label, path))
@@ -239,6 +263,53 @@ def plan_update(root: Path, base: Tree, new: Tree, ignore: list[str]) -> Plan:
         else:
             plan.write[path] = merged
             plan.note("merged, local edits kept", path)
+    return plan
+
+
+def plan_install(root: Path, new: Tree, ignore: list[str]) -> Plan:
+    """Add the template to a repo that was not made from it (#60). The base is empty, so every
+    template file is new, and nothing the repo already has is overwritten."""
+    plan = Plan()
+    for path in sorted(new.paths):
+        f = root / path
+        local = f.read_bytes() if f.is_file() else None
+        if path in PROJECT_OWNED - {"CLAUDE.md"}:
+            continue  # README.md, LICENSE: the project's own, wanted or not; .template-version: written last
+        if path == "CLAUDE.md" and local is not None:
+            plan.note("the repo's own, kept", path)
+            if not re.search(rb"^@AGENTS\.md[ \t]*$", local, re.M):
+                plan.manual.append("CLAUDE.md is the repo's own, so it was left alone. Add a line `@AGENTS.md` "
+                                   "to it: that import is what loads the protocol in Claude Code.")
+            continue
+        if any(fnmatch.fnmatch(path, g) for g in ignore):
+            plan.note("ignored", path)
+            continue
+        n = new.read(path) or b""  # always there: the path came from new.paths
+        if local is None:
+            plan.write[path] = n
+            plan.note("added", path)
+            if path == "SECURITY.md":
+                plan.manual.append("SECURITY.md is the template's: replace its \"Reporting a vulnerability\" "
+                                   "section with this project's own policy.")
+            continue
+        if local == n:
+            plan.note("already current", path)
+            continue
+        if path.endswith(".json"):
+            merged, clean = merge_json(b"", local, n)
+        elif path in UNION_MERGE:
+            merged, clean = merge_line_sets(local, n), True
+        else:
+            merged, clean = local, False
+        problem = validate(path, merged) if clean else "the repo has its own"
+        if problem:
+            plan.conflicts[path] = (None, local, n)
+            plan.note(f"CONFLICT ({problem})", path)
+        elif merged == local:
+            plan.note("already covered", path)
+        else:
+            plan.write[path] = merged
+            plan.note("merged, the repo's kept", path)
     return plan
 
 
@@ -345,6 +416,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--allow-dirty", action="store_true", help="run even with uncommitted changes (git can then not undo the run)")
     p.add_argument("--no-checks", action="store_true", help="skip running the bridge tests afterwards")
     p.add_argument("--check", nargs="+", metavar="PATH", help="only check that these files still parse (after resolving a conflict), then exit")
+    p.add_argument("--install", action="store_true", help="add the template to an existing repo that was not made from it")
     args = p.parse_args(argv)
 
     if args.check:
@@ -360,6 +432,18 @@ def main(argv: list[str] | None = None) -> int:
     if dirty and not (args.allow_dirty or args.dry_run):
         print("error: uncommitted changes. Commit or stash first, so `git checkout .` can undo this update.", file=sys.stderr)
         return 1
+    if args.install:
+        refusal = None
+        if (root / VERSION_FILE).is_file():
+            refusal = f"{VERSION_FILE} is here already, so the template is installed: run without --install to update"
+        elif (root / "scripts" / "bmad_beads.py").is_file():
+            refusal = ("scripts/bmad_beads.py is here already, so this looks like a project made from the template: "
+                       "run without --install, which works out its release from the files")
+        elif args.base:
+            refusal = "--base has no meaning for --install, which has no base"
+        if refusal:
+            print(f"error: {refusal}.", file=sys.stderr)
+            return 1
 
     with tempfile.TemporaryDirectory() as tmp:
         repo = Path(tmp) / "template"
@@ -370,15 +454,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         tags = semver_tags(repo)
         ref = args.ref or (tags[-1] if tags else "HEAD")
-        base_ref, how = (args.base, "--base") if args.base else detect_base(root, repo, tags)
-        print(f"template: {base_ref} → {ref}  (base {how})")
-        if git("rev-parse", f"{base_ref}^{{commit}}", cwd=repo) == git("rev-parse", f"{ref}^{{commit}}", cwd=repo):
-            print("already up to date.")
-            return 0
-        if not git("rev-list", "-n1", f"{base_ref}..{ref}", cwd=repo).strip():
-            # Made from main after `ref`: merging "to" it would undo the newer template changes.
-            print(f"already up to date: this project is newer than {ref}. Wait for the next release.")
-            return 0
+        if args.install:
+            base_ref, how = "none", "an install"
+            print(f"template: installing {ref} into this repo")
+        else:
+            base_ref, how = (args.base, "--base") if args.base else detect_base(root, repo, tags)
+            print(f"template: {base_ref} → {ref}  (base {how})")
+            if git("rev-parse", f"{base_ref}^{{commit}}", cwd=repo) == git("rev-parse", f"{ref}^{{commit}}", cwd=repo):
+                print("already up to date.")
+                return 0
+            if not git("rev-list", "-n1", f"{base_ref}..{ref}", cwd=repo).strip():
+                # Made from main after `ref`: merging "to" it would undo the newer template changes.
+                print(f"already up to date: this project is newer than {ref}. Wait for the next release.")
+                return 0
         ignore = [*args.skip]
         if (root / IGNORE_FILE).is_file():
             ignore += [ln.strip() for ln in (root / IGNORE_FILE).read_text(encoding="utf-8").splitlines()
@@ -387,10 +475,13 @@ def main(argv: list[str] | None = None) -> int:
         # Record a tag as itself; anything else (a branch, HEAD) as its commit, which a later
         # clone can still resolve.
         recorded = ref if ref in tags else git("rev-parse", f"{ref}^{{commit}}", cwd=repo).strip()
-        plan = plan_update(root, Tree(repo, base_ref), new, ignore)
-        # A commit on main between releases has taken that release's steps already (its tag is
-        # an ancestor) but not the next one's; a non-tag target gets every newer section.
-        notes = upgrading_notes(new, release_of(repo, base_ref, tags), ref if ref in tags else None)
+        if args.install:
+            plan, notes = plan_install(root, new, ignore), ""  # UPGRADING.md's steps are for projects moving between releases
+        else:
+            plan = plan_update(root, Tree(repo, base_ref), new, ignore)
+            # A commit on main between releases has taken that release's steps already (its tag is
+            # an ancestor) but not the next one's; a non-tag target gets every newer section.
+            notes = upgrading_notes(new, release_of(repo, base_ref, tags), ref if ref in tags else None)
 
     width = max((len(label) for label, _ in plan.actions), default=0)
     for label, path in plan.actions:
@@ -402,7 +493,12 @@ def main(argv: list[str] | None = None) -> int:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     work = root / WORK_DIR / stamp
     rel = f"{WORK_DIR}/{stamp}"
-    undo = ["#!/usr/bin/env bash", f"# Undo the template update {base_ref} → {ref}: restore every file it changed,",
+    what = f"template install {ref}" if args.install else f"template update {base_ref} → {ref}"
+    title = what[:1].upper() + what[1:]
+    # Directories the run creates, deepest first: undo removes them once empty, so nothing is left.
+    new_dirs = sorted({d for path in plan.write for d in (root / path).parents if root in d.parents and not d.exists()},
+                      key=lambda d: -len(d.parts))
+    undo = ["#!/usr/bin/env bash", f"# Undo the {what}: restore every file it changed,",
             "# delete the ones it added. Touches nothing else.", "set -euo pipefail", 'cd "$(git rev-parse --show-toplevel)"']
     # Conflicted files are backed up too: the updater leaves them alone, but /update-template
     # then writes a resolution into them, and undo must take that back as well.
@@ -414,17 +510,30 @@ def main(argv: list[str] | None = None) -> int:
             undo.append(f"cp {_sq(f'{rel}/backup/{path}')} {_sq(path)}")
         else:
             undo.append(f"rm -f {_sq(path)}")
+    undo += [f"rmdir {_sq(str(d.relative_to(root)))} 2>/dev/null || true" for d in new_dirs]
+    undo.append(f'echo "{what} undone"')
+    if args.install:
+        # The repo's own .gitignore, now restored, may not cover the run folder, so it goes too.
+        undo += [f"rm -rf {_sq(rel)}", f"rmdir {_sq(WORK_DIR)} 2>/dev/null || true"]
     work.mkdir(parents=True, exist_ok=True)
-    (work / "undo.sh").write_text("\n".join(undo) + '\necho "template update undone"\n', encoding="utf-8")
+    (work / "undo.sh").write_text("\n".join(undo) + "\n", encoding="utf-8")
     for path, data in plan.write.items():
         (root / path).parent.mkdir(parents=True, exist_ok=True)
         (root / path).write_bytes(data)
     if plan.conflicts:
-        lines = [f"# Template update {base_ref} → {ref}: {len(plan.conflicts)} conflict(s)", "",
-                 "Each local file below was left exactly as it was. Beside it here are three versions:",
-                 "`.base` (the template as the project started from it), `.local` (the project's copy)",
-                 "and `.template` (the new release). Write a version into the project that keeps the",
-                 "project's own changes and takes the template's. `/update-template` in Claude Code does this.", ""]
+        if args.install:
+            lines = [f"# {title}: {len(plan.conflicts)} file(s) the repo already had", "",
+                     "Each file below already existed in this repo at the path of a template file, and was left",
+                     "exactly as it was. Beside it here are `.local` (the repo's copy) and `.template` (the",
+                     "template's). There is no `.base`: the two share no history, and may be unrelated files that",
+                     "happen to share a name. `/update-template` in Claude Code goes through them, and asks before",
+                     "merging two files that do different jobs.", ""]
+        else:
+            lines = [f"# {title}: {len(plan.conflicts)} conflict(s)", "",
+                     "Each local file below was left exactly as it was. Beside it here are three versions:",
+                     "`.base` (the template as the project started from it), `.local` (the project's copy)",
+                     "and `.template` (the new release). Write a version into the project that keeps the",
+                     "project's own changes and takes the template's. `/update-template` in Claude Code does this.", ""]
         for path, (b, local, n) in plan.conflicts.items():
             for suffix, data in ((".base", b), (".local", local), (".template", n)):
                 if data is not None:
@@ -435,12 +544,25 @@ def main(argv: list[str] | None = None) -> int:
         (work / "CONFLICTS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (root / VERSION_FILE).write_text(f"{recorded}\n", encoding="utf-8")
     width = max((len(label) for label, _ in plan.actions), default=0)
-    report = [f"# Template update {base_ref} → {ref}", "", f"- base: {base_ref} ({how})", f"- {VERSION_FILE} now: {recorded}",
+    report = [f"# {title}", "", f"- base: {base_ref} ({how})", f"- {VERSION_FILE} now: {recorded}",
               f"- files changed: {len(plan.write)}; conflicts: {len(plan.conflicts)}",
-              f"- undo: `bash {rel}/undo.sh`", "", "## Every file the template changed", "", "```",
+              f"- undo: `bash {rel}/undo.sh`", "",
+              "## Every template file" if args.install else "## Every file the template changed", "", "```",
               *(f"{label.ljust(width)}  {path}" for label, path in plan.actions), "```", ""]
     if notes:
         report += ["## Do these by hand (from UPGRADING.md)", "", notes, ""]
+    if args.install:
+        # What is left after an install, in order: README "Add to an existing repo" walks through it.
+        steps = [*plan.manual]
+        if plan.conflicts:
+            steps.append(f"Resolve the files listed in {rel}/CONFLICTS.md: run /update-template in Claude Code "
+                         "(restart Claude Code first if it doesn't list the command yet).")
+        steps += ["Run `bash scripts/bootstrap.sh` (`--local-only` keeps beads on this machine; `--no-metrics` turns "
+                  "off bd's usage metrics for you). It installs BMAD and beads.",
+                  "Fill in the project facts in CLAUDE.md.",
+                  "Review `git status` and `git diff`, then commit the whole install as one change."]
+        notes = "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
+        report += ["## Next", "", notes, ""]
     (work / "REPORT.md").write_text("\n".join(report), encoding="utf-8")
 
     print(f"\n{len(plan.write)} file(s) changed; backups, REPORT.md and undo.sh in {rel}/. {VERSION_FILE} → {recorded}.")
@@ -452,7 +574,7 @@ def main(argv: list[str] | None = None) -> int:
         ok = r.returncode == 0
         print("bridge tests: " + ("pass" if ok else "FAIL\n" + (r.stderr or r.stdout)[-2000:]))
     if notes:
-        print("\n---- UPGRADING.md: do these by hand ----\n" + notes + "\n")
+        print(("\n---- next ----\n" if args.install else "\n---- UPGRADING.md: do these by hand ----\n") + notes + "\n")
     if plan.conflicts:
         print(f"{len(plan.conflicts)} conflict(s): see {WORK_DIR}/{stamp}/CONFLICTS.md, or run /update-template in Claude Code.")
     print(f"Review with `git diff`; undo with `bash {rel}/undo.sh`.")

@@ -348,6 +348,26 @@ class SyncRemoteTests(unittest.TestCase):
         self.assertIn("dolt.local-only", msg)
 
 
+class HooksFindingTests(unittest.TestCase):
+    """#60: bd's hooks, and the repo hooks bd copied in, run only while core.hooksPath is .beads/hooks."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def test_nothing_to_say_without_beads_hooks(self):
+        self.assertIsNone(bb.hooks_finding("", self.root))
+
+    def test_verdicts(self):
+        (self.root / ".beads" / "hooks").mkdir(parents=True)
+        for path, level in (("", "warn"), (".husky/_", "warn"), (".beads/hooks", "ok"),
+                            (str(self.root / ".beads" / "hooks"), "ok")):  # bd writes it absolute
+            with self.subTest(path=path):
+                self.assertEqual(bb.hooks_finding(path, self.root)[0], level)
+        self.assertIn("bd hooks install --beads", bb.hooks_finding(".husky/_", self.root)[1])
+
+
 class MetricsFindingTests(unittest.TestCase):
     """#63: doctor reports bd's anonymous usage metrics, read from `bd metrics` (no --json)."""
 

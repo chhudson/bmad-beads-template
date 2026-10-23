@@ -352,6 +352,152 @@ class BetweenReleasesTests(unittest.TestCase):
         self.assertEqual((self.proj / "scripts" / "untouched.sh").read_text(), "echo post\n")
 
 
+class InstallTests(unittest.TestCase):
+    """#60: --install adds the template to a repo that was not made from it. Done when, on a repo
+    that already has a README, CLAUDE.md, .gitignore, .claude/settings.local.json and its own
+    files, the install is one reviewable diff: nothing of the repo's overwritten, .template-version
+    written, undo.sh restoring the repo exactly, and the next update starting from the release."""
+
+    OWN = {
+        "README.md": "# acme\n",
+        "CLAUDE.md": "# acme rules\n",
+        "LICENSE": "Proprietary. All rights reserved.\n",
+        "AGENTS.md": "# acme agents\n\nUse the Makefile.\n",
+        "SECURITY.md": "# acme security\n\nMail security@acme.invalid.\n",
+        ".gitignore": "node_modules/\n.venv/\n.claude/settings.local.json\n",
+        ".claude/settings.json": json.dumps({"permissions": {"allow": ["Bash(npm test:*)"]}}, indent=2) + "\n",
+        "src/app.py": "print('acme')\n",
+    }
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        tmp = Path(self.tmp.name)
+        self.tmpl, self.proj = tmp / "template", tmp / "project"
+        self.tmpl.mkdir()
+        self.proj.mkdir()
+        init_repo(self.tmpl)
+        write_tree(self.tmpl, {**V2, "SECURITY.md": "# Security\n\nReport it to the template.\n"})
+        commit(self.tmpl, "v2")
+        sh("git", "tag", "v0.2.0", cwd=self.tmpl)
+        init_repo(self.proj)
+        write_tree(self.proj, self.OWN)
+        commit(self.proj, "acme")
+        (self.proj / ".claude" / "settings.local.json").write_text('{"model": "mine"}\n')  # untracked, ignored
+        cwd = Path.cwd()
+        os.chdir(self.proj)
+        self.addCleanup(os.chdir, cwd)
+
+    def run_install(self, *args: str) -> int:
+        self.out = io.StringIO()
+        with contextlib.redirect_stdout(self.out), contextlib.redirect_stderr(self.out):
+            return uft.main(["--source", str(self.tmpl), "--no-checks", "--install", *args])
+
+    def read(self, path: str) -> str:
+        return (self.proj / path).read_text(encoding="utf-8")
+
+    def snapshot(self) -> dict[str, bytes]:
+        return {str(p.relative_to(self.proj)): p.read_bytes() for p in self.proj.rglob("*")
+                if p.is_file() and ".git" not in p.relative_to(self.proj).parts}
+
+    def test_install(self):
+        self.assertEqual(self.run_install(), 2, self.out.getvalue())  # 2: files the repo already had
+        out = self.out.getvalue()
+        self.assertIn("installing v0.2.0", out)
+        # nothing of the repo's overwritten
+        for path in ("README.md", "CLAUDE.md", "LICENSE", "AGENTS.md", "SECURITY.md", "src/app.py"):
+            self.assertEqual(self.read(path), self.OWN[path], path)
+        self.assertEqual(self.read(".claude/settings.local.json"), '{"model": "mine"}\n')
+        # new files added; json merged by key; .gitignore as a set of lines
+        self.assertEqual(self.read("scripts/bridge.py"), V2["scripts/bridge.py"])
+        self.assertEqual(self.read("Taskfile.yml"), V2["Taskfile.yml"])
+        settings = json.loads(self.read(".claude/settings.json"))
+        self.assertEqual(sorted(settings["permissions"]["allow"]), ["Bash(bd ready:*)", "Bash(npm test:*)"])
+        self.assertIn("SessionStart", settings["hooks"])
+        gitignore = self.read(".gitignore").splitlines()
+        self.assertEqual(gitignore[:3], ["node_modules/", ".venv/", ".claude/settings.local.json"])
+        self.assertEqual(gitignore.count(".venv/"), 1)
+        self.assertIn(".template-update/", gitignore)
+        self.assertEqual(self.read(uft.VERSION_FILE), "v0.2.0\n")
+        # collisions: left alone, saved without a base, listed for /update-template
+        work = next((self.proj / uft.WORK_DIR).iterdir())
+        for path in ("AGENTS.md", "SECURITY.md"):
+            self.assertTrue((work / "conflicts" / f"{path}.local").is_file())
+            self.assertTrue((work / "conflicts" / f"{path}.template").is_file())
+            self.assertFalse((work / "conflicts" / f"{path}.base").exists())
+        self.assertIn("no `.base`", (work / "CONFLICTS.md").read_text())
+        # the steps left to do, with the CLAUDE.md import first; no release notes for an install
+        self.assertIn("Add a line `@AGENTS.md`", out)
+        self.assertIn("bootstrap.sh", (work / "REPORT.md").read_text())
+        self.assertNotIn("bump bd", out)
+        self.assertNotIn("LICENSE", out)
+
+    def test_claude_md_added_when_the_repo_has_none(self):
+        (self.proj / "CLAUDE.md").unlink()
+        commit(self.proj, "no CLAUDE.md")
+        self.run_install()
+        self.assertEqual(self.read("CLAUDE.md"), V2["CLAUDE.md"])
+        self.assertNotIn("Add a line `@AGENTS.md`", self.out.getvalue())
+
+    def test_security_md_added_when_the_repo_has_none(self):
+        (self.proj / "SECURITY.md").unlink()
+        commit(self.proj, "no SECURITY.md")
+        self.run_install()
+        self.assertIn("Report it to the template", self.read("SECURITY.md"))
+        self.assertIn("replace its \"Reporting a vulnerability\" section", self.out.getvalue())
+
+    def test_undo_restores_the_repo_exactly(self):
+        before, status = self.snapshot(), sh("git", "status", "--porcelain", "--untracked-files=all", cwd=self.proj)
+        self.run_install()
+        (self.proj / "AGENTS.md").write_text("merged by /update-template\n")  # a resolution, taken back too
+        undo = next((self.proj / uft.WORK_DIR).iterdir()) / "undo.sh"
+        sh("bash", str(undo), cwd=self.proj)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(sh("git", "status", "--porcelain", "--untracked-files=all", cwd=self.proj), status)
+        for leftover in ("scripts", "_bmad", ".template-update", uft.VERSION_FILE):
+            self.assertFalse((self.proj / leftover).exists(), leftover)
+
+    def test_next_update_starts_from_the_recorded_release(self):
+        self.run_install()
+        commit(self.proj, "install the template")  # the merged .gitignore covers the run folder
+        self.assertNotIn(uft.WORK_DIR, sh("git", "ls-files", cwd=self.proj))
+        write_tree(self.tmpl, {"scripts/untouched.sh": "echo v3\n"})
+        commit(self.tmpl, "v3")
+        sh("git", "tag", "v0.3.0", cwd=self.tmpl)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            uft.main(["--source", str(self.tmpl), "--no-checks"])
+        self.assertIn("template: v0.2.0 → v0.3.0  (base .template-version)", out.getvalue())
+        self.assertEqual(self.read("scripts/untouched.sh"), "echo v3\n")
+
+    def test_dry_run_writes_nothing(self):
+        before = self.snapshot()
+        self.assertEqual(self.run_install("--dry-run"), 0)
+        self.assertEqual(self.snapshot(), before)
+        self.assertIn("CONFLICT", self.out.getvalue())
+
+    def test_refuses_a_repo_that_has_the_template(self):
+        for marker in (uft.VERSION_FILE, "scripts/bmad_beads.py"):
+            with self.subTest(marker=marker):
+                write_tree(self.proj, {marker: "v0.1.0\n"})
+                commit(self.proj, marker)
+                self.assertEqual(self.run_install(), 1)
+                self.assertIn("run without --install", self.out.getvalue())
+                (self.proj / marker).unlink()
+                commit(self.proj, f"drop {marker}")
+
+
+class MergeLineSetsTests(unittest.TestCase):
+    def test_adds_only_missing_patterns_with_their_comments(self):
+        local = b"node_modules/\n.venv/\n"
+        new = b"# --- Python ---\n.venv/\n__pycache__/\n\n# --- OS ---\n.DS_Store\n\n# --- all present ---\nnode_modules/\n"
+        self.assertEqual(uft.merge_line_sets(local, new),
+                         b"node_modules/\n.venv/\n\n# --- Python ---\n__pycache__/\n\n# --- OS ---\n.DS_Store\n")
+
+    def test_nothing_missing_leaves_the_file_as_it_is(self):
+        self.assertEqual(uft.merge_line_sets(b".venv/", b"# py\n.venv/\n"), b".venv/")
+
+
 class DocsPinTests(unittest.TestCase):
     """#46: the docs must run the release's own updater, not whatever is on main."""
 

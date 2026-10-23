@@ -91,6 +91,45 @@ bd dolt push
 
 Push the code first: beads can't push to a repo that has no branch yet.
 
+### Add to an existing repo
+
+For a repo that already has its own history, files and conventions. The updater's `--install`
+adds the template's files without overwriting any of the repo's, then bootstrap installs BMAD and
+beads. Nothing is committed until you commit.
+
+1. **Commit or stash everything.** The install won't start with uncommitted changes.
+2. **Preview, then install**, from the repo root, with the newest release tag for `<tag>`:
+
+   ```bash
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/<tag>/scripts/update_from_template.py --install --dry-run
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/<tag>/scripts/update_from_template.py --install
+   ```
+
+   In Claude Code's auto mode, type each line with a leading `!`. A file the repo doesn't have is
+   added; `.claude/settings.json` is merged by key and `.gitignore` as a set of lines. Any other file
+   the repo already has, such as `AGENTS.md`, `Taskfile.yml` or `SECURITY.md`, is left exactly as it
+   is and listed in `.template-update/<timestamp>/CONFLICTS.md`. `README.md`, `LICENSE` and an
+   existing `CLAUDE.md` are never written.
+3. **Resolve those files** with `/update-template` (restart Claude Code if it doesn't list the
+   command yet). It merges files that do the same job, and asks you about `SECURITY.md` and about
+   any file that only shares its name with a template file.
+4. **Bootstrap**: `bash scripts/bootstrap.sh`, adding `--local-only` or `--no-metrics` if you want
+   them. It writes a README stub only if the repo has none. `bd init` makes a commit of its own,
+   which bootstrap takes back, leaving the changes staged. Bootstrap also names the repo's git
+   hooks that bd copied into `.beads/hooks/`: they keep running from there, and they are committed
+   with the project, so check them for paths that only exist on your machine.
+5. **Finish by hand**: the steps the install printed (an `@AGENTS.md` line in your `CLAUDE.md`, and
+   your own reporting policy in `SECURITY.md` if it came from the template), then the project facts
+   in `CLAUDE.md`.
+6. **Review `git status` and `git diff`, then commit it all as one change.** `.template-version`
+   records the release, so later updates start from it.
+
+To back out before that commit, run `bash .template-update/<timestamp>/undo.sh`, which restores
+or deletes exactly the files the install touched. Then remove what bootstrap added, as
+`git status --short` lists it (`_bmad/`, the `bmad-*` skills in `.claude/skills/`, `.beads/`), and
+reset `core.hooksPath`: to the old value bootstrap printed, or with `git config --unset
+core.hooksPath` if it printed none.
+
 ## The loop
 
 ```mermaid
@@ -251,6 +290,9 @@ It refuses to start with uncommitted changes. Every run leaves `.template-update
 with a backup of each file it changed, a `REPORT.md`, and an `undo.sh` that restores exactly those
 files and deletes the ones it added. Afterwards it runs the bridge tests and prints the release's
 manual steps from `UPGRADING.md`. Review with `git diff`, then commit.
+
+`--install` is the same machinery for a repo that wasn't made from the template, with nothing as
+the base: see [Add to an existing repo](#add-to-an-existing-repo).
 
 ## Status
 

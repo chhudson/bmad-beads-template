@@ -141,6 +141,31 @@ local_only_config() {
   echo "local only: bd dolt push skips every remote (dolt.local-only)"
 }
 
+# bd points core.hooksPath at .beads/hooks and copies each hook the repo already had into it, where
+# it is committed with the project (#60). Say what moved: a copied hook can hold this machine's paths.
+hooks_before() {
+  PREV_HOOKS="$(git config core.hooksPath || true)"
+  OLD_HOOKS=()
+  local dir="${PREV_HOOKS:-.git/hooks}" f
+  if [[ "$(cd "$dir" 2>/dev/null && pwd -P)" == "$(cd .beads/hooks 2>/dev/null && pwd -P)" ]]; then return 0; fi
+  for f in "$dir"/*; do
+    if [[ -f "$f" && -x "$f" && "$f" != *.sample ]]; then OLD_HOOKS+=("$(basename "$f")"); fi
+  done
+}
+hooks_after() {
+  local copied=() h
+  if [[ -n "$PREV_HOOKS" && "$(git config core.hooksPath || true)" != "$PREV_HOOKS" ]]; then
+    echo "git hooks: core.hooksPath was $PREV_HOOKS, now .beads/hooks"
+  fi
+  for h in "${OLD_HOOKS[@]+"${OLD_HOOKS[@]}"}"; do
+    if [[ -f ".beads/hooks/$h" ]]; then copied+=("$h"); fi
+  done
+  if (( ${#copied[@]} )); then
+    echo "git hooks: this repo's ${copied[*]} now run from .beads/hooks/, copied there by bd and committed"
+    echo "           with the project. Check them for paths or settings that only fit this machine."
+  fi
+}
+
 if [[ -f .beads/config.yaml ]]; then
   say "beads (bd bootstrap: this machine's database)"
   # A clone of a bootstrapped project has the committed config but not the database, which is
@@ -182,11 +207,25 @@ EOF
   fi
   # bd init points core.hooksPath at the committed .beads/hooks. That is local git config, which a
   # clone doesn't get, so set it again.
+  hooks_before
   bd hooks install --beads >/dev/null && echo "git hooks: .beads/hooks"
+  hooks_after
 else
   say "beads (bd init --prefix $PREFIX ${MODE_FLAGS[*]:-})"
+  hooks_before
+  PRE_HEAD="$(git rev-parse -q --verify HEAD || true)"
   # --skip-agents: we ship our own AGENTS.md; bd's section can be added later with `bd onboard`.
   bd init --prefix "$PREFIX" --skip-agents --non-interactive "${MODE_FLAGS[@]}"
+  # bd init commits what it wrote, plus anything already staged, as a commit of its own. Take that
+  # commit back, keeping its changes staged, so the whole bootstrap is one change you review and
+  # commit (#60). Only bd's own commit, made just now on top of the HEAD from before.
+  if [[ "$(git rev-parse -q --verify HEAD || true)" != "$PRE_HEAD" \
+      && "$(git log -1 --format=%s 2>/dev/null || true)" == "bd init: initialize beads issue tracking" \
+      && "$(git rev-parse -q --verify HEAD~1 || true)" == "$PRE_HEAD" ]]; then
+    if [[ -n "$PRE_HEAD" ]]; then git reset -q --soft "$PRE_HEAD"; else git update-ref -d HEAD; fi
+    echo "bd init's own commit taken back; its changes are staged, to commit with the rest"
+  fi
+  hooks_after
   if (( LOCAL_ONLY )); then local_only_config; fi
 fi
 # `review` is BMAD's between-build-and-code-review state; beads needs it as a custom status.
@@ -195,8 +234,17 @@ bd config get status.custom >/dev/null && echo "custom status: review (wip)"
 
 say "Claude Code hook (bd prime on SessionStart)"
 # .claude/settings.json shipped with the template already carries the hook; `bd setup claude`
-# is idempotent and will also refresh it after a bd upgrade.
+# refreshes it after a bd upgrade and writes bd's section of AGENTS.md. It also rewrites
+# settings.json with its keys sorted, so when nothing else changed the file goes back as it was.
+SETTINGS_WAS="$(mktemp)"
+cp .claude/settings.json "$SETTINGS_WAS" 2>/dev/null || true
 bd setup claude >/dev/null 2>&1 || true
+if [[ -s "$SETTINGS_WAS" ]] && uv run --quiet --no-project python -c \
+    'import json, sys; a, b = (json.load(open(p)) for p in sys.argv[1:]); sys.exit(a != b)' \
+    "$SETTINGS_WAS" .claude/settings.json 2>/dev/null; then
+  cp "$SETTINGS_WAS" .claude/settings.json
+fi
+rm -f "$SETTINGS_WAS"
 grep -q 'bd prime' .claude/settings.json && echo "hook present"
 
 say "Seed memory"
@@ -208,11 +256,13 @@ bd remember --key bmad-sprint-status "sprint-status.yaml and _bmad-output/** are
 
 say "Project README"
 # A clone of the template still carries the template's own README, which describes
-# the template rather than this project. Replace it with a stub once, on first run.
+# the template rather than this project. Replace it with a stub once, on first run; a repo with
+# no README gets the stub too, and a project's own README is never touched (#60).
 # Never in the template repo itself (dogfooding bootstrap there would overwrite the template's README).
 if (( KEEP_README || TEMPLATE_DEV )); then
   echo "README.md kept (--keep-readme or --template-dev)"
-elif grep -q '^# bmad-beads-template' README.md 2>/dev/null; then
+elif [[ ! -f README.md ]] || grep -q '^# bmad-beads-template' README.md; then
+  if [[ -f README.md ]]; then README_WAS="template README replaced with"; else README_WAS="no README.md, so wrote"; fi
   cat > README.md <<STUB
 # ${PREFIX}
 
@@ -226,7 +276,7 @@ protocol; \`task --list\` shows the entry points; \`docs/BLUEPRINT.md\` explains
 
 <!-- How to run / test this project. -->
 STUB
-  echo "template README replaced with a project stub — fill it in"
+  echo "$README_WAS a project stub — fill it in"
 else
   echo "README.md already project-specific — untouched"
 fi
