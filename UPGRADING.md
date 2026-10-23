@@ -9,7 +9,7 @@ uv run scripts/update_from_template.py            # or /update-template in Claud
 Projects made before v0.3.0 don't have the script yet. Run it straight from the template:
 
 ```bash
-uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py
+uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.1/scripts/update_from_template.py
 ```
 
 If Claude Code's auto mode blocks that ("Code from External"), run it yourself by typing it with a
@@ -17,6 +17,14 @@ leading `!` in the prompt, then run `/update-template` to resolve conflicts and 
 
 It merges each file with the project's own changes, leaves conflicts untouched for review, and prints
 the steps below for every release it crosses. See the README section "Updating from the template".
+
+## v0.4.1
+
+- Updater fix only; nothing to do (#69). A project made from `main` after a release, which had
+  deleted a file the template added later (a `.github/dependabot.yml` listed in `.template-ignore`,
+  say), was taken to be on that release, so the update reported conflicts in files nobody had
+  edited. If an update to v0.4.0 did that, `bash .template-update/<timestamp>/undo.sh`, then run
+  this release's updater, which finds the right base.
 
 ## v0.4.0
 

@@ -498,6 +498,43 @@ class MergeLineSetsTests(unittest.TestCase):
         self.assertEqual(uft.merge_line_sets(b".venv/", b"# py\n.venv/\n"), b".venv/")
 
 
+class DeletedFileTests(unittest.TestCase):
+    """#69: a project made from main after a release, which then deleted a file the template added
+    after that release, was taken to be on the release, and nobody's edits came up as conflicts."""
+
+    def test_a_deleted_file_does_not_hide_the_later_commit(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmpl, proj = Path(d) / "template", Path(d) / "project"
+            tmpl.mkdir()
+            proj.mkdir()
+            init_repo(tmpl)
+            write_tree(tmpl, {"scripts/tool.sh": "echo a\n", "UPGRADING.md": "# Upgrading\n"})
+            commit(tmpl, "v1")
+            sh("git", "tag", "v0.1.0", cwd=tmpl)
+            write_tree(tmpl, {"scripts/tool.sh": "echo b\n", ".github/dependabot.yml": "version: 2\n"})
+            commit(tmpl, "after v0.1.0: tool.sh fix, dependabot")
+            mid = sh("git", "rev-parse", "--short=10", "HEAD", cwd=tmpl).strip()
+            write_tree(tmpl, {"scripts/tool.sh": "echo c\n"})
+            commit(tmpl, "v2")
+            sh("git", "tag", "v0.2.0", cwd=tmpl)
+            # Made from `mid`, whose .template-version still named v0.1.0; dependabot.yml deleted.
+            init_repo(proj)
+            write_tree(proj, {"scripts/tool.sh": "echo b\n", "UPGRADING.md": "# Upgrading\n",
+                              uft.VERSION_FILE: "v0.1.0\n", uft.IGNORE_FILE: ".github/dependabot.yml\n"})
+            commit(proj, "made from main after v0.1.0, without dependabot")
+            cwd = Path.cwd()
+            os.chdir(proj)
+            self.addCleanup(os.chdir, cwd)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                code = uft.main(["--source", str(tmpl), "--no-checks"])
+            self.assertIn(f"template commit {mid}", out.getvalue())
+            self.assertNotIn("CONFLICT", out.getvalue())
+            self.assertEqual(code, 0, out.getvalue())
+            self.assertEqual((proj / "scripts" / "tool.sh").read_text(), "echo c\n")
+            self.assertFalse((proj / ".github" / "dependabot.yml").exists())
+
+
 class DocsPinTests(unittest.TestCase):
     """#46: the docs must run the release's own updater, not whatever is on main."""
 
