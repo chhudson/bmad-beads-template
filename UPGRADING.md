@@ -31,6 +31,11 @@ the steps below for every release it crosses. See the README section "Updating f
 - **`LICENSE` is now the project's**, like `README.md`: the updater never changes it, and a new
   project's first bootstrap removes the template's. If yours is still the template's MIT licence
   (copyright Charles Hudson) and that isn't right for the project, delete it or replace it.
+- **bd's anonymous usage metrics are now in SECURITY.md's "What runs without asking".** bd sends
+  them from every command unless they are off. Nothing changes unless you want them off: run
+  `bd metrics off` (it applies to your user account on that machine, not to the project), or
+  re-run `bash scripts/bootstrap.sh --no-metrics`. In CI, set `BD_DISABLE_METRICS=1`; the upstream
+  canary now does. `doctor` shows the current state.
 - **Add `@AGENTS.md` to your `CLAUDE.md`.** Claude Code reads `AGENTS.md` by itself only in a
   project with no `CLAUDE.md`, so until now the protocol reached the agent only when it chose to
   open the file. The updater never touches `CLAUDE.md`: replace the line

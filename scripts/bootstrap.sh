@@ -7,6 +7,7 @@
 #   bash scripts/bootstrap.sh --keep-readme    # never replace README.md with the project stub
 #   bash scripts/bootstrap.sh --local-only     # beads never syncs, even once the code has a remote
 #   bash scripts/bootstrap.sh --template-dev   # in the template repo itself: origin may be the template
+#   bash scripts/bootstrap.sh --no-metrics     # turn off bd's anonymous usage metrics for you (bd metrics off)
 #   BMAD_VERSION=6.12.0 BD_VERSION=1.3.0 bash scripts/bootstrap.sh   # pin the pair (default: latest)
 #
 # Idempotent: safe to re-run after pulling template updates or upgrading bmad/bd. In a fresh clone
@@ -18,6 +19,7 @@ MODE_FLAGS=()
 KEEP_README=0
 TEMPLATE_DEV=0
 LOCAL_ONLY=0
+NO_METRICS=0
 # Unpinned by default so a new project never starts on a stale BMAD. `doctor` warns when the
 # installed pair differs from the one the bridge was last validated on.
 BMAD_VERSION="${BMAD_VERSION:-latest}"
@@ -31,10 +33,14 @@ while [[ $# -gt 0 ]]; do
     --keep-readme) KEEP_README=1; shift ;;
     --template-dev) TEMPLATE_DEV=1; shift ;;
     --local-only) LOCAL_ONLY=1; shift ;;
-    -h|--help) sed -n 2,13p "$0"; exit 0 ;;
+    --no-metrics) NO_METRICS=1; shift ;;
+    -h|--help) sed -n 2,14p "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+# bd sends anonymous usage metrics from every command, `bd version` included, unless they are off
+# (SECURITY.md). With --no-metrics, none of this script's own bd calls sends any.
+if (( NO_METRICS )); then export BD_DISABLE_METRICS=1; fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -88,6 +94,17 @@ if ! BD_V="$(bd version 2>&1)"; then
 fi
 echo "bd:   $(head -1 <<<"$BD_V")"
 echo "node: $(node -v)   uv: $(uv --version)"
+# The setting is per user account on this machine, not per project (bd ignores .beads/config.yaml
+# for it), so this turns metrics off only for whoever runs bootstrap.
+if (( NO_METRICS )); then
+  bd metrics off >/dev/null && echo "bd metrics: off for your user account on this machine (bd metrics off)"
+else
+  METRICS="$(bd metrics 2>/dev/null || true)"
+  case "${METRICS%%$'\n'*}" in
+    *": OFF") echo "bd metrics: off" ;;
+    *": ON") echo "bd metrics: on (anonymous command names; see SECURITY.md). Off: --no-metrics, or bd metrics off" ;;
+  esac
+fi
 [[ -d .git ]] || git init -q
 
 say "BMAD Method $BMAD_VERSION (npx bmad-method install → _bmad/, .claude/skills/)"
