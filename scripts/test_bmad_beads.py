@@ -348,6 +348,56 @@ class SyncRemoteTests(unittest.TestCase):
         self.assertIn("dolt.local-only", msg)
 
 
+class NoDatabaseBD:
+    """bd in a fresh clone of a bootstrapped project: .beads/config.yaml is committed, the database
+    is gitignored, and `bd where` reports no database_path (#61)."""
+
+    def run(self, *args, **kw):
+        if args[0] == "where":
+            return {"path": "/clone/.beads", "schema_version": 1}
+        raise bb.BDError(f"bd {' '.join(args)} failed: Error: no beads database found", 1)
+
+    def list(self, **filters):
+        return self.run("list")
+
+
+class DatabaseFindingTests(unittest.TestCase):
+    """#61: doctor printed `doctor: OK` in a clone with no beads database."""
+
+    def test_no_database_path_fails(self):
+        level, msg = bb.database_finding({"path": "/clone/.beads"}, RuntimeError("no beads database found"))
+        self.assertEqual(level, "fail")
+        self.assertIn("bootstrap.sh", msg)
+
+    def test_other_errors_stay_warnings(self):
+        for where in ({"path": "/p/.beads", "database_path": "/p/.beads/embeddeddolt"}, None):
+            with self.subTest(where=where):
+                self.assertEqual(bb.database_finding(where, RuntimeError("boom"))[0], "warn")
+
+    def test_doctor_fails_in_a_clone_without_a_database(self):
+        # Without sprint-status.yaml, doctor used to print `doctor: OK`; with it, it died in load_index.
+        for with_sprint_status in (False, True):
+            with self.subTest(with_sprint_status=with_sprint_status), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                files = {".beads/config.yaml": "", "_bmad/bmm/config.yaml": ""}
+                if with_sprint_status:
+                    files["_bmad-output/implementation-artifacts/sprint-status.yaml"] = "development_status:\n  1-1-a: backlog\n"
+                for path, text in files.items():
+                    (root / path).parent.mkdir(parents=True, exist_ok=True)
+                    (root / path).write_text(text, encoding="utf-8")
+                version = mock.Mock(stdout="bd version 1.3.1 (Homebrew)\n", returncode=0)
+                out = io.StringIO()
+                with mock.patch.object(bb, "BD", lambda *a, **k: NoDatabaseBD()), \
+                        mock.patch.object(bb, "project_root", lambda: root), \
+                        mock.patch.object(bb.shutil, "which", lambda _: "/usr/local/bin/bd"), \
+                        mock.patch.object(bb.subprocess, "run", lambda *a, **k: version), \
+                        contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                    code = bb.main(["doctor"])
+                self.assertEqual(code, 1, out.getvalue())
+                self.assertIn("✗ no beads database here", out.getvalue())
+                self.assertIn("doctor: 1 hard failure(s)", out.getvalue())
+
+
 class OverrideTests(unittest.TestCase):
     """#25: bmad-build-auto runs the same build unattended, so it carries the same rules."""
 

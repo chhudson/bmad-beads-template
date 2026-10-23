@@ -152,12 +152,18 @@ and carry on without it; re-pour it, or close its steps by hand.
 `bd init` records the git remote as `sync.remote`; `bd dolt push` / `bd dolt pull` move the Dolt
 history through `refs/dolt/data` on the same remote — invisible to branch protection, merged at
 the cell level. Single writer per clone, which is right for one human plus one agent.
+A new clone has the committed `.beads/config.yaml` but no database; `bootstrap.sh` fetches it with
+`bd bootstrap`, which clones `refs/dolt/data`. Before anyone has run `bd dolt push` there is
+nothing to clone, and bootstrap stops: a failed `bd bootstrap` leaves an empty database that
+every later run would accept, unrelated to the project's.
 
 **Local only (`bootstrap.sh --local-only`).** Sets beads' `dolt.local-only`, which lives in the
 committed `.beads/config.yaml`, so `bd dolt push` skips every remote in every clone, whatever the
-code's remote is. For projects whose beads must not leave the machine. Bootstrap also refuses an
-`origin` that points at the template itself, since `bd init` would make it the sync remote, and
-`doctor` fails on a Dolt remote that does.
+code's remote is. For projects whose beads must not leave the machine. It also unsets `sync.remote`:
+`bd bootstrap` ignores `dolt.local-only` and would try to clone from it, so without it a clone
+starts its own empty database. Bootstrap also refuses an `origin` that points at the template
+itself, since `bd init` would make it the sync remote, and `doctor` fails on a Dolt remote that
+does.
 
 **Server (`bootstrap.sh --server`).** Every clone and every parallel agent talks to one
 `dolt sql-server`. Needed when several agents on one machine write concurrently (worktrees, a

@@ -58,6 +58,10 @@ jobs:
           cp -R "$GITHUB_WORKSPACE" "$PROJECT"
           cd "$PROJECT"
           rm -rf .git
+          # In a project, .beads/ holds its committed beads config, which names its own database
+          # and sync remote; bootstrap would try to fetch that database (#61). Keep only the
+          # template's formulas, as a new project has. In the template repo this removes nothing.
+          find .beads -mindepth 1 -maxdepth 1 ! -name formulas -exec rm -rf {} +
           git init -q
           git remote add origin https://example.invalid/canary.git
       - name: Bootstrap (BMAD ${{ env.BMAD_VERSION }}, bd ${{ env.BD_VERSION }})
