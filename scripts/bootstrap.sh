@@ -8,7 +8,7 @@
 #   bash scripts/bootstrap.sh --local-only     # beads never syncs, even once the code has a remote
 #   bash scripts/bootstrap.sh --template-dev   # in the template repo itself: origin may be the template
 #   bash scripts/bootstrap.sh --no-metrics     # turn off bd's anonymous usage metrics for you (bd metrics off)
-#   BMAD_VERSION=6.12.0 BD_VERSION=1.3.0 bash scripts/bootstrap.sh   # pin the pair (default: latest)
+#   BMAD_VERSION=6.12.4 BD_VERSION=1.3.1 bash scripts/bootstrap.sh   # pin the pair (default: latest)
 #
 # Idempotent: safe to re-run after pulling template updates or upgrading bmad/bd. In a fresh clone
 # of a bootstrapped project it fetches the beads database instead of creating one (bd bootstrap).
