@@ -40,6 +40,19 @@ holding `REPORT.md` (what it did), `undo.sh`, `backup/`, and, when there are con
      project's additions after it, wrapped to the width of the template's lines around them.
      If the two genuinely contradict (the project removed something the template changed), keep
      the project's version and tell the user what the template wanted.
+   - **No `.base` file means the run was an install** (`--install`): the repo had its own file at
+     that path before the template arrived, and the two share no history. First decide whether
+     they do the same job:
+     - Same job (the project's own `AGENTS.md`, `Taskfile.yml`, `.github/dependabot.yml`): keep
+       all of the project's content and add the template's, merged by meaning, not line by line.
+       For `AGENTS.md`, keep the project's text and add the template's protocol after it as its
+       own section, including the `BEGIN BEADS INTEGRATION` / `END BEADS INTEGRATION` markers.
+     - `SECURITY.md`: ask the user. Either add the template's "What runs without asking" section
+       to theirs, or keep theirs as it is and add `SECURITY.md` to `.template-ignore`.
+     - Different jobs under the same name (the project's own `scripts/bootstrap.sh`, a PR template
+       written for other work): stop and ask the user. Never merge those.
+     When the user keeps the project's file as it is, leave it, add its path to `.template-ignore`
+     so updates leave it alone too, and tick the box.
    - Write the result to `path`. Then run `uv run scripts/update_from_template.py --check <path>`,
      which covers `.json` (duplicate keys too), `.toml`, `.py`, `.sh` and leftover conflict markers.
      For `Taskfile.yml`, also run `task --list`. For `.github/workflows/*.yml`, run `actionlint` if
@@ -49,7 +62,8 @@ holding `REPORT.md` (what it did), `undo.sh`, `backup/`, and, when there are con
 
 3. **Check**: run `uv run scripts/test_bmad_beads.py`, then `uv run scripts/bmad_beads.py doctor`.
    If something the update broke fails, fix it. If a failure has nothing to do with the update,
-   note it and carry on to step 4 anyway; don't try to fix it.
+   note it and carry on to step 4 anyway; don't try to fix it. After an install, doctor fails
+   until `bootstrap.sh` has run: that is expected, and the next step.
 
 4. **Report**, using the run's `REPORT.md`, not your memory of the updater's output:
    - the version jump. If REPORT.md says the base was **guessed**, say so plainly: a wrong base
@@ -57,6 +71,8 @@ holding `REPORT.md` (what it did), `undo.sh`, `backup/`, and, when there are con
    - the files REPORT.md lists as changed, with `git diff --stat`
    - one line per conflict: how you resolved it
    - files the report marks `ignored (changed upstream)`, `removed upstream, kept` or `deleted locally, not restored`
+   - after an install, the steps under REPORT.md's "Next" instead. Offer to run `bootstrap.sh`
+     once the conflicts are resolved, and run it only when the user says yes.
    - the "Do these by hand" steps. For the ones that are safe to automate
      (e.g. `uv run scripts/bmad_beads.py sync`), ask whether to run them, and run nothing until
      the user says yes. Leave the judgement calls (e.g. deleting a workflow) to the user.

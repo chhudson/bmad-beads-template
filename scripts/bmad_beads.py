@@ -889,6 +889,21 @@ def sync_remote_finding(remotes: list[dict], local_only: bool = False) -> tuple[
     return "ok", "beads is local only: no Dolt remote, so `bd dolt push` skips"
 
 
+def hooks_finding(hooks_path: str, root: Path) -> tuple[str, str] | None:
+    """doctor's verdict on git hooks. bd's hooks, and any hook the repo had before that bd copied
+    in, live in the committed .beads/hooks and run only while core.hooksPath points there: a clone
+    that skipped bootstrap lacks it, and husky resets it on `npm install` (#60)."""
+    hooks = root / ".beads" / "hooks"
+    if not hooks.is_dir():
+        return None
+    fix = "`bd hooks install --beads` (or re-run scripts/bootstrap.sh)"
+    if not hooks_path:
+        return "warn", f"git hooks off: core.hooksPath isn't set, so nothing in .beads/hooks runs — {fix}"
+    if (root / hooks_path).resolve() != hooks.resolve():
+        return "warn", f"git hooks: core.hooksPath is {hooks_path}, so nothing in .beads/hooks runs — {fix}"
+    return "ok", "git hooks run from .beads/hooks"
+
+
 def metrics_finding(status: str) -> tuple[str, str]:
     """doctor's report on bd's anonymous usage metrics, from the first line of `bd metrics` (it
     ignores --json). Whether they are on is each user's own choice, so never a failure (#63)."""
@@ -972,6 +987,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     except RuntimeError as ex:
         level, msg = "warn", f"could not read bd metrics status: {ex}"
     (ok if level == "ok" else warn)(msg)
+    hooks_path = subprocess.run(["git", "config", "core.hooksPath"], cwd=root, capture_output=True, text=True).stdout.strip()
+    finding = hooks_finding(hooks_path, root)
+    if finding:
+        (ok if finding[0] == "ok" else warn)(finding[1])
     settings = root / ".claude" / "settings.json"
     if settings.exists() and "bd prime" in settings.read_text(encoding="utf-8"):
         ok("Claude Code SessionStart hook → bd prime")

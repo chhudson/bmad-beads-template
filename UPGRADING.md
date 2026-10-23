@@ -57,6 +57,14 @@ the steps below for every release it crosses. See the README section "Updating f
     `.beads/` back to 0700. It skips the BMAD installer when the committed `_bmad/` already has the
     wanted version, so a re-run leaves a clean tree.
   - `doctor` fails when there is no beads database, instead of printing `doctor: OK`.
+  - `update_from_template.py --install` adds the template to a repo that wasn't made from it (README,
+    "Add to an existing repo"), and `/update-template` knows how to resolve what it leaves.
+  - On a first run, bootstrap takes back the commit `bd init` makes of its own and leaves the
+    changes staged, so the whole bootstrap is one commit. It writes a README stub when there is no
+    `README.md`, names any repo hooks bd copied into `.beads/hooks/`, and keeps the key order of
+    `.claude/settings.json` (`bd setup claude` sorts it).
+  - `doctor` warns when `core.hooksPath` isn't `.beads/hooks`, which is when bd's hooks stop running.
+  - An `undo.sh` also removes directories its run created.
   - The upstream canary drops the project's beads state from its throwaway copy. In a project it
     failed on every PR that touched its paths, Dependabot's included.
 
