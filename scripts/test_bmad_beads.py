@@ -348,6 +348,28 @@ class SyncRemoteTests(unittest.TestCase):
         self.assertIn("dolt.local-only", msg)
 
 
+class MetricsFindingTests(unittest.TestCase):
+    """#63: doctor reports bd's anonymous usage metrics, read from `bd metrics` (no --json)."""
+
+    STATUS = "Anonymous usage metrics: {}\n\nWhat we collect: the name of each bd command you run, ...\n"
+
+    def test_off_is_ok(self):
+        self.assertEqual(bb.metrics_finding(self.STATUS.format("OFF"))[0], "ok")
+
+    def test_on_is_a_warning_with_the_way_out(self):
+        level, msg = bb.metrics_finding(self.STATUS.format("ON"))
+        self.assertEqual(level, "warn")
+        self.assertIn("bd metrics off", msg)
+        self.assertIn("SECURITY.md", msg)
+
+    def test_unrecognised_output_says_so(self):
+        for text in ("", "Error: unknown command \"metrics\"\n"):
+            with self.subTest(text=text):
+                level, msg = bb.metrics_finding(text)
+                self.assertEqual(level, "warn")
+                self.assertIn("could not tell", msg)
+
+
 class NoDatabaseBD:
     """bd in a fresh clone of a bootstrapped project: .beads/config.yaml is committed, the database
     is gitignored, and `bd where` reports no database_path (#61)."""

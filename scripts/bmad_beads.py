@@ -889,6 +889,18 @@ def sync_remote_finding(remotes: list[dict], local_only: bool = False) -> tuple[
     return "ok", "beads is local only: no Dolt remote, so `bd dolt push` skips"
 
 
+def metrics_finding(status: str) -> tuple[str, str]:
+    """doctor's report on bd's anonymous usage metrics, from the first line of `bd metrics` (it
+    ignores --json). Whether they are on is each user's own choice, so never a failure (#63)."""
+    first = (status or "").strip().split("\n", 1)[0]
+    if first.endswith(": OFF"):
+        return "ok", "bd usage metrics off"
+    if first.endswith(": ON"):
+        return "warn", ("bd sends anonymous usage metrics (command names) from this machine: see SECURITY.md. "
+                        "Off: `bd metrics off`, or BD_DISABLE_METRICS=1")
+    return "warn", f"could not tell whether bd usage metrics are on: {first or 'no output'}"
+
+
 def database_finding(where: object, error: Exception) -> tuple[str, str]:
     """doctor's verdict when bd could not read the project's config. A fresh clone has the
     committed .beads/config.yaml but not the database, which is gitignored (#61); `bd where`
@@ -955,6 +967,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             (fail if level == "fail" else ok)(msg)
         except RuntimeError as ex:
             warn(f"could not list beads remotes: {ex}")
+    try:
+        level, msg = metrics_finding(str(bd.run("metrics", json_out=False) or ""))
+    except RuntimeError as ex:
+        level, msg = "warn", f"could not read bd metrics status: {ex}"
+    (ok if level == "ok" else warn)(msg)
     settings = root / ".claude" / "settings.json"
     if settings.exists() and "bd prime" in settings.read_text(encoding="utf-8"):
         ok("Claude Code SessionStart hook → bd prime")

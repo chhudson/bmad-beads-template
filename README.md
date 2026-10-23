@@ -36,6 +36,10 @@ git push && bd dolt push          # the code, then the beads database (to refs/d
 The first bootstrap removes the template's `LICENSE` (MIT, with the template author's copyright
 line). Add your project's own if it needs one; the updater never touches `LICENSE`.
 
+`bd` sends anonymous usage metrics (command names, bd version, OS) unless you turn them off.
+`bootstrap.sh --no-metrics` does that with `bd metrics off`. It's a setting for your user account,
+not the project, so everyone on the project decides for themselves; SECURITY.md has the details.
+
 Someone joining the project clones it and runs `bash scripts/bootstrap.sh` too. In a clone it
 fetches the beads database with `bd bootstrap` instead of creating one, so it needs that first
 `bd dolt push`: until then it stops and says so.

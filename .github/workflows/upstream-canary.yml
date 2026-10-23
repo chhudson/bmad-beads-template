@@ -44,6 +44,8 @@ jobs:
       BMAD_VERSION: ${{ inputs.bmad_version || 'latest' }}
       BD_VERSION: ${{ inputs.bd_version || 'latest' }}
       PROJECT: ${{ github.workspace }}/../canary-project
+      # bd's anonymous usage metrics (SECURITY.md): nothing a throwaway runner should send.
+      BD_DISABLE_METRICS: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
