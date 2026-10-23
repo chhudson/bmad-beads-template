@@ -98,11 +98,11 @@ adds the template's files without overwriting any of the repo's, then bootstrap 
 beads. Nothing is committed until you commit.
 
 1. **Commit or stash everything.** The install won't start with uncommitted changes.
-2. **Preview, then install**, from the repo root, with the newest release tag for `<tag>`:
+2. **Preview, then install**, from the repo root:
 
    ```bash
-   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/<tag>/scripts/update_from_template.py --install --dry-run
-   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/<tag>/scripts/update_from_template.py --install
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py --install --dry-run
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py --install
    ```
 
    In Claude Code's auto mode, type each line with a leading `!`. A file the repo doesn't have is
@@ -245,26 +245,31 @@ v0.3.0 on the way.
 2. **Preview, then run** from the project root:
 
    ```bash
-   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.3.1/scripts/update_from_template.py --dry-run
-   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.3.1/scripts/update_from_template.py
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py --dry-run
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py
    ```
 
    In Claude Code's auto mode, Claude can't run a script from a URL itself. Type each line with a
    leading `!` so it runs in the session.
 
    The first line of output names the release it thinks the project came from, e.g.
-   `template: v0.2.0 → v0.3.1 (base guessed: …)`. If a file your team never edited comes up as a
+   `template: v0.2.0 → v0.4.0 (base guessed: …)`. If a file your team never edited comes up as a
    conflict, that guess is probably wrong: run `bash .template-update/<timestamp>/undo.sh`, then
    run again with `--base <tag or commit>`.
 3. **Resolve any conflicts** with `/update-template`, which the run has just added (restart Claude
    Code if it doesn't appear). It keeps both your changes and the template's, then runs the tests
    and `doctor`. No conflicts: skip this step.
-4. **Do the manual steps** the run prints from `UPGRADING.md`. For v0.2.0 → v0.3.1:
+4. **Do the manual steps** the run prints from `UPGRADING.md`. For v0.2.0 → v0.4.0:
    - bd 1.3 or newer is required: `brew upgrade beads`.
    - Re-pour any planning molecule created before v0.3.0, or close its remaining steps by hand.
-   - Run `uv run scripts/bmad_beads.py sync` once.
-   - The upstream canary's weekly run is off in projects. Set the repository variable
-     `UPSTREAM_CANARY=on` if you want it.
+   - In `CLAUDE.md`, replace the line "Read `AGENTS.md` first — …" with `@AGENTS.md`.
+   - Replace the reporting section of the new `SECURITY.md` with your project's own policy. If
+     `LICENSE` is still the template's MIT licence and that isn't right for the project, delete or
+     replace it.
+   - Run `uv run scripts/bmad_beads.py sync` and `uv run scripts/bmad_beads.py doctor` once, and
+     `bd dolt push` once if nobody has, so a fresh clone can bootstrap.
+   - Optional: the upstream canary's weekly run is off in projects (set the repository variable
+     `UPSTREAM_CANARY=on` to have it), and `bd metrics off` stops bd's anonymous usage metrics.
 5. **Review `git diff`, then commit.** `.template-version` now records the release, so later updates
    start from it and need no guessing.
 
@@ -296,15 +301,16 @@ the base: see [Add to an existing repo](#add-to-an-existing-repo).
 
 ## Status
 
-Validated against BMAD Method **6.12.0** and beads **1.3.0** (Sep 2026) by the upstream
+Validated against BMAD Method **6.12.4** and beads **1.3.1** (Oct 2026) by the upstream
 canary (`scripts/canary.py`): a fresh bootstrap, BMAD's own `sprint_plan.py` writing
 `sprint-status.yaml`, then import → claim guard → review → done → milestone cascade, with
-BMAD's `validate` accepting the result. That run caught one bd 1.3 change (a bead can only be
-closed by its assignee), which the bridge now handles. The full dogfood cycles, two of them on a
-real project with a cold agent in round two, ran in Aug 2026 on BMAD 6.11.0 / beads 1.2.2.
+BMAD's `validate` accepting the result. The run on 6.12.0 / 1.3.0 (Sep 2026) caught one bd 1.3
+change (a bead can only be closed by its assignee), which the bridge now handles. The full dogfood
+cycles, two of them on a real project with a cold agent in round two, ran in Aug 2026 on BMAD
+6.11.0 / beads 1.2.2.
 
 `bootstrap.sh` installs `@latest` of both unless you pin them
-(`BMAD_VERSION=6.12.0 BD_VERSION=1.3.0 bash scripts/bootstrap.sh`), and `doctor` warns when the
+(`BMAD_VERSION=6.12.4 BD_VERSION=1.3.1 bash scripts/bootstrap.sh`), and `doctor` warns when the
 installed pair differs from the validated one. The canary re-runs weekly in CI against
 `@latest` and opens an issue when it fails. The bridge reads only the public shapes of
 `epics.md`, `sprint-status.yaml`, and `bd --json`; when either tool changes those, the canary,

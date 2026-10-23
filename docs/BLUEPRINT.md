@@ -1,8 +1,8 @@
 # Blueprint: BMAD × beads
 
 How the two tools are joined, what each owns, and where the seams are. Designed and dogfooded
-on BMAD Method 6.11.0 and beads 1.2.2 (Dolt backend), August 2026; re-validated on 6.12.0 / 1.3.0
-by `scripts/canary.py`, September 2026.
+on BMAD Method 6.11.0 and beads 1.2.2 (Dolt backend), August 2026; re-validated by
+`scripts/canary.py` on 6.12.0 / 1.3.0 (September 2026) and 6.12.4 / 1.3.1 (October 2026).
 
 ## 1. The problem this solves
 

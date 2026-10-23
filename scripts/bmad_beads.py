@@ -71,7 +71,7 @@ BD_HELD = {"blocked", "deferred"}
 
 # The pair the bridge was last validated on end to end (scripts/canary.py). doctor warns on a
 # difference; it does not fail, since the bridge only reads public shapes.
-VALIDATED = {"BMAD": "6.12.0", "bd": "1.3.0"}
+VALIDATED = {"BMAD": "6.12.4", "bd": "1.3.1"}
 
 # The template's own repo. A project whose beads remote is this would publish its beads there on
 # every `bd dolt push` (#49); bootstrap.sh refuses such an origin with the same pattern.

@@ -9,7 +9,7 @@ uv run scripts/update_from_template.py            # or /update-template in Claud
 Projects made before v0.3.0 don't have the script yet. Run it straight from the template:
 
 ```bash
-uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.3.1/scripts/update_from_template.py
+uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py
 ```
 
 If Claude Code's auto mode blocks that ("Code from External"), run it yourself by typing it with a
@@ -18,7 +18,7 @@ leading `!` in the prompt, then run `/update-template` to resolve conflicts and 
 It merges each file with the project's own changes, leaves conflicts untouched for review, and prints
 the steps below for every release it crosses. See the README section "Updating from the template".
 
-## Unreleased
+## v0.4.0
 
 - **Run `bd dolt push` once on the machine that bootstrapped the project**, if nobody has. In a
   fresh clone, `bootstrap.sh` now fetches the beads database with `bd bootstrap` (before, it stopped
@@ -65,6 +65,7 @@ the steps below for every release it crosses. See the README section "Updating f
     `.claude/settings.json` (`bd setup claude` sorts it).
   - `doctor` warns when `core.hooksPath` isn't `.beads/hooks`, which is when bd's hooks stop running.
   - An `undo.sh` also removes directories its run created.
+  - The validated pair is now BMAD 6.12.4 / bd 1.3.1, so `doctor` stops warning when you have it.
   - The upstream canary drops the project's beads state from its throwaway copy. In a project it
     failed on every PR that touched its paths, Dependabot's included.
 
