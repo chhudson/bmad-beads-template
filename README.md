@@ -30,7 +30,12 @@ gh repo create my-project --template chhudson/bmad-beads-template --private --cl
 cd my-project
 bash scripts/bootstrap.sh         # installs BMAD + beads, wires hooks, runs doctor
 git add -A && git commit -m "bootstrap BMAD×beads"
+git push && bd dolt push          # the code, then the beads database (to refs/dolt/data)
 ```
+
+Someone joining the project clones it and runs `bash scripts/bootstrap.sh` too. In a clone it
+fetches the beads database with `bd bootstrap` instead of creating one, so it needs that first
+`bd dolt push`: until then it stops and says so.
 
 Prerequisites: git, Node ≥ 20.12, [uv](https://docs.astral.sh/uv/), and [Task](https://taskfile.dev)
 for the `task …` shortcuts (optional: each task wraps one command you can run directly). `bd` is
@@ -61,7 +66,9 @@ record it as its sync remote, and every build ends with `bd dolt push`.
 
 `--local-only` sets beads' `dolt.local-only`, so `bd dolt push` skips every remote, including any
 you add later. Without it, a project with no remote is local too, but only until it gets one.
-`uv run scripts/bmad_beads.py doctor` shows which of these you have.
+`uv run scripts/bmad_beads.py doctor` shows which of these you have. A clone of a local-only
+project gets its own empty beads database when you bootstrap it, since the original's never leaves
+its machine.
 
 For a backup, any git remote you control works, not only GitHub. A bare repo on an encrypted
 drive, for example:

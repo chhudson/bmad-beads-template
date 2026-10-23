@@ -889,6 +889,15 @@ def sync_remote_finding(remotes: list[dict], local_only: bool = False) -> tuple[
     return "ok", "beads is local only: no Dolt remote, so `bd dolt push` skips"
 
 
+def database_finding(where: object, error: Exception) -> tuple[str, str]:
+    """doctor's verdict when bd could not read the project's config. A fresh clone has the
+    committed .beads/config.yaml but not the database, which is gitignored (#61); `bd where`
+    then reports no `database_path`. Any other failure stays a warning."""
+    if isinstance(where, dict) and not where.get("database_path"):
+        return "fail", "no beads database here (a fresh clone?) — run scripts/bootstrap.sh, which fetches it with `bd bootstrap`"
+    return "warn", f"could not read beads config: {error}"
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = project_root()
     planning, impl = bmm_paths(root)
@@ -926,18 +935,26 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     want = " / ".join(f"{k} {v}" for k, v in VALIDATED.items())
     check(installed == VALIDATED, f"{pair} — the validated pair", f"{pair} installed; the bridge was last validated on {want} — run `task test` and watch the first sync (see docs/BLUEPRINT.md §6)", warn)
     bd = BD(root)
+    has_db = True
     try:
         custom = bd.run("config", "get", "status.custom", json_out=False)
         check("review" in (custom or ""), "beads custom status `review` configured", "beads lacks custom status `review` — bd config set status.custom review:wip", fail)
     except RuntimeError as ex:
-        warn(f"could not read beads config: {ex}")
-    try:
-        flag = bd.run("config", "get", "dolt.local-only")
-        local_only = isinstance(flag, dict) and str(flag.get("value", "")).lower() == "true"
-        level, msg = sync_remote_finding(bd.run("dolt", "remote", "list") or [], local_only)
-        (fail if level == "fail" else ok)(msg)
-    except RuntimeError as ex:
-        warn(f"could not list beads remotes: {ex}")
+        try:
+            where = bd.run("where")
+        except RuntimeError:
+            where = None
+        level, msg = database_finding(where, ex)
+        has_db = level != "fail"
+        (fail if level == "fail" else warn)(msg)
+    if has_db:
+        try:
+            flag = bd.run("config", "get", "dolt.local-only")
+            local_only = isinstance(flag, dict) and str(flag.get("value", "")).lower() == "true"
+            level, msg = sync_remote_finding(bd.run("dolt", "remote", "list") or [], local_only)
+            (fail if level == "fail" else ok)(msg)
+        except RuntimeError as ex:
+            warn(f"could not list beads remotes: {ex}")
     settings = root / ".claude" / "settings.json"
     if settings.exists() and "bd prime" in settings.read_text(encoding="utf-8"):
         ok("Claude Code SessionStart hook → bd prime")
@@ -972,7 +989,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         if unlinked:
             warn(f"deferred-work.md: {unlinked} entr{'y' if unlinked == 1 else 'ies'} without a leading `bead: <id>` — file the bead first, then point at it")
     ss = SprintStatus(impl / "sprint-status.yaml")
-    if ss.exists():
+    if ss.exists() and has_db:
         idx = load_index(bd)
         # A bead carrying the `story` label but no bmad_story_key is usually a child
         # bead created under a story (children inherit the parent's labels) — it
@@ -995,7 +1012,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             keys = {s.key for e in parse_epics(ep) for s in e.stories}
             drift = [k for k in entries if k not in keys]
             check(not drift, "sprint-status keys match epics.md", f"{len(drift)} sprint-status keys not in epics.md (retitled story? re-run sprint-planning then import): {', '.join(drift[:5])}", warn)
-    else:
+    elif not ss.exists():
         warn("no sprint-status.yaml yet (run /bmad-sprint-planning)")
     print("doctor: " + ("OK" if not hard else f"{hard} hard failure(s)"))
     return 1 if hard else 0

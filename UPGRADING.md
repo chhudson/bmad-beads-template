@@ -20,6 +20,14 @@ the steps below for every release it crosses. See the README section "Updating f
 
 ## Unreleased
 
+- **Run `bd dolt push` once on the machine that bootstrapped the project**, if nobody has. In a
+  fresh clone, `bootstrap.sh` now fetches the beads database with `bd bootstrap` (before, it stopped
+  at `no beads database found`). With nothing pushed, it stops and says so.
+- **Local-only projects made from `main` after v0.3.1** (bootstrapped with `--local-only`): the
+  next bootstrap unsets `sync.remote` in `.beads/config.yaml`, and bd's section of `AGENTS.md` drops
+  its `bd dolt push` lines to match. Commit both. `bd bootstrap` ignores `dolt.local-only`, so with
+  `sync.remote` set a clone tries to fetch a database that was never pushed; without it, the clone
+  starts its own.
 - **Add `@AGENTS.md` to your `CLAUDE.md`.** Claude Code reads `AGENTS.md` by itself only in a
   project with no `CLAUDE.md`, so until now the protocol reached the agent only when it chose to
   open the file. The updater never touches `CLAUDE.md`: replace the line
@@ -37,6 +45,12 @@ the steps below for every release it crosses. See the README section "Updating f
     than the newest release.
   - The canary creates its issue labels when they're missing.
   - `/bmad-build` skips the claim for a freeform change that has no story.
+  - In a clone, bootstrap installs bd's git hooks (`core.hooksPath` isn't cloned) and sets
+    `.beads/` back to 0700. It skips the BMAD installer when the committed `_bmad/` already has the
+    wanted version, so a re-run leaves a clean tree.
+  - `doctor` fails when there is no beads database, instead of printing `doctor: OK`.
+  - The upstream canary drops the project's beads state from its throwaway copy. In a project it
+    failed on every PR that touched its paths, Dependabot's included.
 
 ## v0.3.1
 

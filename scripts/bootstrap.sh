@@ -9,7 +9,8 @@
 #   bash scripts/bootstrap.sh --template-dev   # in the template repo itself: origin may be the template
 #   BMAD_VERSION=6.12.0 BD_VERSION=1.3.0 bash scripts/bootstrap.sh   # pin the pair (default: latest)
 #
-# Idempotent: safe to re-run after pulling template updates or upgrading bmad/bd.
+# Idempotent: safe to re-run after pulling template updates or upgrading bmad/bd. In a fresh clone
+# of a bootstrapped project it fetches the beads database instead of creating one (bd bootstrap).
 set -euo pipefail
 
 PREFIX=""
@@ -30,7 +31,7 @@ while [[ $# -gt 0 ]]; do
     --keep-readme) KEEP_README=1; shift ;;
     --template-dev) TEMPLATE_DEV=1; shift ;;
     --local-only) LOCAL_ONLY=1; shift ;;
-    -h|--help) sed -n 2,12p "$0"; exit 0 ;;
+    -h|--help) sed -n 2,13p "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -76,6 +77,8 @@ if ! command -v bd >/dev/null 2>&1; then
 elif [[ "$BD_VERSION" != latest ]] && ! bd version | grep -qF "$BD_VERSION"; then
   echo "warning: BD_VERSION=$BD_VERSION but $(bd version | head -1) is installed — bootstrap does not replace an existing bd" >&2
 fi
+# git does not keep the 0700 that bd init sets on .beads/, and bd warns on every call without it.
+if [[ -d .beads ]]; then chmod 700 .beads; fi
 if ! BD_V="$(bd version 2>&1)"; then
   echo "bd is on PATH but does not run: $BD_V" >&2
   echo "(an npm install whose postinstall could not download the binary looks like this — try: brew install beads)" >&2
@@ -86,26 +89,90 @@ echo "node: $(node -v)   uv: $(uv --version)"
 [[ -d .git ]] || git init -q
 
 say "BMAD Method $BMAD_VERSION (npx bmad-method install → _bmad/, .claude/skills/)"
-# --yes is non-interactive; re-running performs an update and keeps _bmad/custom/ untouched.
-npx -y "bmad-method@$BMAD_VERSION" install --yes --directory "$ROOT" --tools claude-code --modules bmm \
-  --user-name "$USER_NAME" --output-folder _bmad-output >/dev/null
+# Re-running the installer at the version already committed only rewrites timestamps in the
+# committed _bmad/ files, which leaves a dirty tree that /bmad-build's clean-tree check trips on.
+# So a clone, or a re-run, skips it unless the version would change.
+INSTALLED_BMAD="$( { sed -n '/^installation:/,/^[^ ]/s/^ *version: *//p' _bmad/_config/manifest.yaml 2>/dev/null || true; } | head -1 | tr -d "\"'")"
+WANT_BMAD="$BMAD_VERSION"
+[[ "$WANT_BMAD" == latest ]] && WANT_BMAD="$(npm view bmad-method version 2>/dev/null || true)"
+if [[ -n "$INSTALLED_BMAD" && "$INSTALLED_BMAD" == "$WANT_BMAD" && -d .claude/skills ]]; then
+  echo "BMAD $INSTALLED_BMAD already installed — installer skipped"
+else
+  # --yes is non-interactive; re-running performs an update and keeps _bmad/custom/ untouched.
+  npx -y "bmad-method@$BMAD_VERSION" install --yes --directory "$ROOT" --tools claude-code --modules bmm \
+    --user-name "$USER_NAME" --output-folder _bmad-output >/dev/null
+fi
 mkdir -p _bmad-output/planning-artifacts _bmad-output/implementation-artifacts docs
 echo "installed: $(find .claude/skills -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ') skills; team overrides in _bmad/custom/"
 
-say "beads (bd init --prefix $PREFIX ${MODE_FLAGS[*]:-})"
+# Both settings live in .beads/config.yaml, which is committed, so every clone keeps them (undo:
+# bd config unset dolt.local-only). bd bootstrap ignores dolt.local-only and clones from sync.remote
+# when one is set, but a local-only project never pushes there; with none, it creates a fresh
+# database, which is all a clone of a local-only project can have. Each set or unset rewrites the
+# file and can reformat it, so they run only when a value changes.
+local_only_config() {
+  local remote
+  remote="$(bd config get sync.remote 2>/dev/null || true)"
+  if [[ -n "$remote" && "$remote" != *"(not set"* ]]; then
+    bd config unset sync.remote >/dev/null && echo "sync.remote unset: a clone of a local-only project starts its own database"
+  fi
+  if [[ "$(bd config get dolt.local-only 2>/dev/null || true)" != true ]]; then
+    bd config set dolt.local-only true >/dev/null
+  fi
+  echo "local only: bd dolt push skips every remote (dolt.local-only)"
+}
+
 if [[ -f .beads/config.yaml ]]; then
-  echo "already initialised — skipping bd init"
+  say "beads (bd bootstrap: this machine's database)"
+  # A clone of a bootstrapped project has the committed config but not the database, which is
+  # gitignored. bd bootstrap clones it from refs/dolt/data on the sync remote, creates a fresh one
+  # when there is nothing to clone, or validates one that exists. It never deletes data.
+  if (( LOCAL_ONLY )) || [[ "$(bd config get dolt.local-only 2>/dev/null || true)" == true ]]; then
+    LOCAL_ONLY=1
+    local_only_config
+  fi
+  WHERE="$(bd where --json 2>/dev/null || true)"
+  HAD_DB=0
+  [[ "$WHERE" == *'"database_path"'* ]] && HAD_DB=1
+  if (( ! HAD_DB && ! LOCAL_ONLY )); then
+    # Until someone runs `bd dolt push` there is nothing to clone, and a failed bd bootstrap leaves
+    # an empty database that every later run takes for this project's (#61). Stop before that.
+    REMOTE="$(bd config get sync.remote 2>/dev/null || true)"
+    [[ "$REMOTE" == *"(not set"* ]] && REMOTE=""
+    rc=0
+    [[ -n "$REMOTE" ]] && { git ls-remote --exit-code "$REMOTE" refs/dolt/data >/dev/null 2>&1 || rc=$?; }
+    if (( rc == 2 )); then
+      cat >&2 <<EOF
+No beads data on $REMOTE yet (no refs/dolt/data): the project was bootstrapped, but nobody
+has run \`bd dolt push\` since. Ask whoever bootstrapped it to run \`bd dolt push\` once, then
+re-run this script. (If that data is gone for good: \`bd config unset sync.remote\` and re-run,
+which starts an empty database.)
+EOF
+      exit 1
+    fi
+  fi
+  if ! bd bootstrap --yes; then
+    if (( ! HAD_DB )); then
+      rm -rf .beads/embeddeddolt
+      echo "removed the empty database bd bootstrap left behind, so a re-run starts clean" >&2
+    fi
+    exit 1
+  fi
+  if (( ! HAD_DB && LOCAL_ONLY )); then
+    echo "local only: this clone has its own empty beads database; the original's never leaves its machine"
+  fi
+  # bd init points core.hooksPath at the committed .beads/hooks. That is local git config, which a
+  # clone doesn't get, so set it again.
+  bd hooks install --beads >/dev/null && echo "git hooks: .beads/hooks"
 else
+  say "beads (bd init --prefix $PREFIX ${MODE_FLAGS[*]:-})"
   # --skip-agents: we ship our own AGENTS.md; bd's section can be added later with `bd onboard`.
   bd init --prefix "$PREFIX" --skip-agents --non-interactive "${MODE_FLAGS[@]}"
+  if (( LOCAL_ONLY )); then local_only_config; fi
 fi
 # `review` is BMAD's between-build-and-code-review state; beads needs it as a custom status.
 bd config set status.custom "review:wip" >/dev/null
 bd config get status.custom >/dev/null && echo "custom status: review (wip)"
-# Lives in .beads/config.yaml, which is committed, so every clone keeps it. Undo: bd config unset dolt.local-only
-if (( LOCAL_ONLY )); then
-  bd config set dolt.local-only true >/dev/null && echo "local only: bd dolt push skips every remote (dolt.local-only)"
-fi
 
 say "Claude Code hook (bd prime on SessionStart)"
 # .claude/settings.json shipped with the template already carries the hook; `bd setup claude`
@@ -151,7 +218,7 @@ uv run --quiet scripts/bmad_beads.py doctor || true
 if (( LOCAL_ONLY )); then
   SYNC_HINT="beads stays on this machine (--local-only); doctor shows it"
 else
-  SYNC_HINT="Sync beads across machines: bd dolt push  (bd init recorded your git remote as sync.remote)"
+  SYNC_HINT="Push:    git push, then bd dolt push once, so a clone finds the beads data (bootstrap there fetches it)"
 fi
 cat <<EOF
 
