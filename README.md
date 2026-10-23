@@ -101,8 +101,8 @@ beads. Nothing is committed until you commit.
 2. **Preview, then install**, from the repo root:
 
    ```bash
-   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py --install --dry-run
-   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py --install
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.1/scripts/update_from_template.py --install --dry-run
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.1/scripts/update_from_template.py --install
    ```
 
    In Claude Code's auto mode, type each line with a leading `!`. A file the repo doesn't have is
@@ -245,21 +245,21 @@ v0.3.0 on the way.
 2. **Preview, then run** from the project root:
 
    ```bash
-   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py --dry-run
-   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.0/scripts/update_from_template.py
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.1/scripts/update_from_template.py --dry-run
+   uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.1/scripts/update_from_template.py
    ```
 
    In Claude Code's auto mode, Claude can't run a script from a URL itself. Type each line with a
    leading `!` so it runs in the session.
 
    The first line of output names the release it thinks the project came from, e.g.
-   `template: v0.2.0 → v0.4.0 (base guessed: …)`. If a file your team never edited comes up as a
+   `template: v0.2.0 → v0.4.1 (base guessed: …)`. If a file your team never edited comes up as a
    conflict, that guess is probably wrong: run `bash .template-update/<timestamp>/undo.sh`, then
    run again with `--base <tag or commit>`.
 3. **Resolve any conflicts** with `/update-template`, which the run has just added (restart Claude
    Code if it doesn't appear). It keeps both your changes and the template's, then runs the tests
    and `doctor`. No conflicts: skip this step.
-4. **Do the manual steps** the run prints from `UPGRADING.md`. For v0.2.0 → v0.4.0:
+4. **Do the manual steps** the run prints from `UPGRADING.md`. For v0.2.0 → v0.4.1:
    - bd 1.3 or newer is required: `brew upgrade beads`.
    - Re-pour any planning molecule created before v0.3.0, or close its remaining steps by hand.
    - In `CLAUDE.md`, replace the line "Read `AGENTS.md` first — …" with `@AGENTS.md`.

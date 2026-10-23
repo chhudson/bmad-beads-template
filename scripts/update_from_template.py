@@ -352,17 +352,19 @@ def made_after(root: Path, repo: Path, ref: str, tags: list[str]) -> tuple[str, 
     say so. "Use this template" copies the tip of main, whose .template-version names the last
     release until the next one, so a project made between releases records a base older than
     its files (#52). A later commit counts only if, of the files it changed since `ref`, the
-    project has none at `ref`'s version and at least one at the commit's."""
+    project has none at `ref`'s version and at least one at the commit's. Only files the project
+    has count, either way: a missing one may have been added later or deleted by the project,
+    such as a .github/dependabot.yml it listed in .template-ignore (#69)."""
     later = git("rev-list", "--reverse", "--ancestry-path", f"^{ref}", "HEAD", *tags, cwd=repo).split()
     base = tree_ids(repo, ref)
     best, best_n = None, 0
     for c in dict.fromkeys(later):
         tree = tree_ids(repo, c)
         changed = {p for p in base.keys() | tree.keys() if base.get(p) != tree.get(p)}
-        local = local_blob_ids(root, changed)
-        if any(local.get(p) == base.get(p) for p in changed):  # a missing file matches a missing one
+        local = local_blob_ids(root, changed)  # only the changed files the project has
+        if any(blob == base.get(p) for p, blob in local.items()):
             continue
-        n = sum(1 for p in changed if local.get(p) == tree.get(p))
+        n = sum(1 for p, blob in local.items() if blob == tree.get(p))
         if n > best_n:
             best, best_n = c, n
     return (best, best_n) if best else None
