@@ -33,6 +33,9 @@ git add -A && git commit -m "bootstrap BMAD×beads"
 git push && bd dolt push          # the code, then the beads database (to refs/dolt/data)
 ```
 
+The first bootstrap removes the template's `LICENSE` (MIT, with the template author's copyright
+line). Add your project's own if it needs one; the updater never touches `LICENSE`.
+
 Someone joining the project clones it and runs `bash scripts/bootstrap.sh` too. In a clone it
 fetches the beads database with `bd bootstrap` instead of creating one, so it needs that first
 `bd dolt push`: until then it stops and says so.
@@ -138,6 +141,7 @@ story cut in correct-course, closed with `bd close <id> --reason "…"`.
 AGENTS.md                      operating protocol for any agent (Claude Code, Codex, humans)
 CLAUDE.md                      imports AGENTS.md (@AGENTS.md); project facts go below the line
 SECURITY.md                    how to report a vulnerability; what runs without asking (hooks, allowlist, workflows)
+LICENSE                        MIT, for the template itself; a project's first bootstrap removes it
 .claude/settings.json          SessionStart → bd prime; read-only bd + bridge commands pre-allowed
 .claude/commands/update-template.md          /update-template: take a new template release, resolve conflicts
 _bmad/custom/*.toml            BMAD overrides: dependency convention, claim-on-start, sync-on-complete
@@ -235,9 +239,9 @@ then for each file the template changed:
 | new in the template | added |
 | removed from the template, or deleted by you | kept as it is, and reported |
 
-`README.md` and `CLAUDE.md` are yours and never touched. To stop updates to a file you've taken
-over, list it (or a glob) in `.template-ignore`; the updater then only tells you when the template
-changes it. `--skip <glob>` does the same for one run.
+`README.md`, `CLAUDE.md` and `LICENSE` are yours and never touched. To stop updates to a file
+you've taken over, list it (or a glob) in `.template-ignore`; the updater then only tells you when
+the template changes it. `--skip <glob>` does the same for one run.
 
 It refuses to start with uncommitted changes. Every run leaves `.template-update/<timestamp>/`
 with a backup of each file it changed, a `REPORT.md`, and an `undo.sh` that restores exactly those

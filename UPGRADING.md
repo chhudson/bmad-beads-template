@@ -28,6 +28,9 @@ the steps below for every release it crosses. See the README section "Updating f
   its `bd dolt push` lines to match. Commit both. `bd bootstrap` ignores `dolt.local-only`, so with
   `sync.remote` set a clone tries to fetch a database that was never pushed; without it, the clone
   starts its own.
+- **`LICENSE` is now the project's**, like `README.md`: the updater never changes it, and a new
+  project's first bootstrap removes the template's. If yours is still the template's MIT licence
+  (copyright Charles Hudson) and that isn't right for the project, delete it or replace it.
 - **Add `@AGENTS.md` to your `CLAUDE.md`.** Claude Code reads `AGENTS.md` by itself only in a
   project with no `CLAUDE.md`, so until now the protocol reached the agent only when it chose to
   open the file. The updater never touches `CLAUDE.md`: replace the line

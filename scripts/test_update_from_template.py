@@ -34,6 +34,7 @@ V1 = {
     "UPGRADING.md": "# Upgrading\n",
     "CLAUDE.md": "# Project instructions\n",
     ".gitignore": ".venv/\n",
+    "LICENSE": "MIT License\n\nCopyright (c) 2026 Template Author\n",
 }
 V2 = {
     **{k: v for k, v in V1.items() if k != "scripts/retired.py"},
@@ -48,6 +49,7 @@ V2 = {
     "README.md": "# bmad-beads-template\n\nNew template docs.\n",
     "CLAUDE.md": "# Project instructions\n\nNew template text.\n",
     ".gitignore": ".venv/\n.template-update/\n",
+    "LICENSE": "MIT License\n\nCopyright (c) 2026-2027 Template Author\n",
     "UPGRADING.md": "# Upgrading\n\n## v0.2.0\n\n- bump bd\n\n## v0.1.0\n\n- first\n",
 }
 
@@ -140,6 +142,8 @@ class UpdateTests(unittest.TestCase):
         # project-owned never touched
         self.assertEqual(self.read("README.md"), "# acme\n")
         self.assertEqual(self.read("CLAUDE.md"), "# Project instructions\n")  # even untouched
+        self.assertEqual(self.read("LICENSE"), V1["LICENSE"])  # #62: untouched since the base, still not updated
+        self.assertNotIn("LICENSE", out)
         self.assertEqual(self.read(uft.VERSION_FILE), "v0.2.0\n")
         # conflict: local file untouched, three versions saved, exit 2
         self.assertEqual(code, 2)
@@ -230,6 +234,14 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(self.read("scripts/untouched.sh"), "echo v1\n")
         self.assertNotIn("canary:", self.read("Taskfile.yml"))
         self.assertIn("changed upstream (review by hand)", self.out.getvalue())
+
+    def test_deleted_license_stays_deleted(self):
+        # #62: bootstrap removes the template's LICENSE from a new project; no update brings it back.
+        (self.proj / "LICENSE").unlink()
+        commit(self.proj, "drop the template's licence")
+        self.run_update()
+        self.assertFalse((self.proj / "LICENSE").exists())
+        self.assertNotIn("LICENSE", self.out.getvalue())
 
     def test_dirty_tree_refused(self):
         (self.proj / "AGENTS.md").write_text("dirty\n")

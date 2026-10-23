@@ -20,7 +20,7 @@ template release the project started from as the common base:
   new in the template             → added
   removed from the template       → reported, never deleted
 
-Never touched: README.md, CLAUDE.md (project-owned), anything listed in `.template-ignore`
+Never touched: README.md, CLAUDE.md, LICENSE (project-owned), anything listed in `.template-ignore`
 (one glob per line) or passed with --skip. It refuses to run on a dirty working tree. Every
 file it changes is backed up under `.template-update/<timestamp>/backup/`, next to a REPORT.md
 of what it did and an undo.sh that puts back exactly those files and nothing else.
@@ -49,7 +49,8 @@ DEFAULT_SOURCE = "https://github.com/chhudson/bmad-beads-template"
 VERSION_FILE = ".template-version"
 IGNORE_FILE = ".template-ignore"
 WORK_DIR = ".template-update"
-PROJECT_OWNED = {"README.md", "CLAUDE.md", VERSION_FILE}
+# LICENSE: the template's MIT licence names the template's author, so it is never the project's (#62).
+PROJECT_OWNED = {"README.md", "CLAUDE.md", "LICENSE", VERSION_FILE}
 # Line-set files: every line from both sides belongs in the result. `bd init` appends its own
 # block to .gitignore, so a plain merge would conflict with any template addition at the end.
 UNION_MERGE = {".gitignore"}

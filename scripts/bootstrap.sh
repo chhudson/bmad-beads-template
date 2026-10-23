@@ -38,6 +38,8 @@ done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+FIRST_RUN=1   # no beads config yet: this project has never been bootstrapped
+if [[ -f .beads/config.yaml ]]; then FIRST_RUN=0; fi
 [[ -z "$PREFIX" ]] && PREFIX="$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-' | sed 's/-*$//')"
 
 say() { printf '\n\033[1m▶ %s\033[0m\n' "$*"; }
@@ -210,6 +212,23 @@ STUB
   echo "template README replaced with a project stub — fill it in"
 else
   echo "README.md already project-specific — untouched"
+fi
+
+say "Project LICENSE"
+# The template's MIT licence names the template's author, which is wrong for nearly every project
+# made from it (#62). The first bootstrap removes it, but only the template's own file: same text,
+# added by the same commit as this script, or both still uncommitted (a copy with a fresh history).
+# A repo that had its own LICENSE before the template arrived keeps it, whatever it says.
+added_in() { git log --diff-filter=A --format=%H -1 -- "$1" 2>/dev/null || true; }
+if (( TEMPLATE_DEV )); then
+  echo "LICENSE kept (--template-dev)"
+elif (( FIRST_RUN )) && [[ -f LICENSE ]] && [[ "$(head -1 LICENSE)" == "MIT License" ]] \
+    && grep -qF "Charles Hudson" LICENSE && [[ "$(added_in LICENSE)" == "$(added_in scripts/bootstrap.sh)" ]]; then
+  rm LICENSE
+  echo "LICENSE removed: it was the template's MIT licence, copyright the template's author."
+  echo "Add your project's own if it needs one. To keep the template's: git restore LICENSE"
+else
+  echo "LICENSE untouched"
 fi
 
 say "Doctor"
