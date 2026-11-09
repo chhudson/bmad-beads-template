@@ -536,15 +536,16 @@ class DeletedFileTests(unittest.TestCase):
 
 
 class DocsPinTests(unittest.TestCase):
-    """#46: the docs must run the release's own updater, not whatever is on main."""
+    """#46: the docs must run the release's own updater (and new_project.py), not whatever is on main."""
 
     def test_script_urls_name_the_current_release(self):
         root = Path(__file__).resolve().parent.parent
         version = (root / uft.VERSION_FILE).read_text(encoding="utf-8").strip()
         for doc in ("README.md", "UPGRADING.md", ".claude/commands/update-template.md"):
-            refs = re.findall(r"bmad-beads-template/([^/\s]+)/scripts/update_from_template\.py", (root / doc).read_text(encoding="utf-8"))
+            refs = re.findall(r"bmad-beads-template/([^/\s]+)/scripts/(?:update_from_template|new_project)\.py",
+                              (root / doc).read_text(encoding="utf-8"))
             with self.subTest(doc):
-                self.assertTrue(set(refs) <= {version, "<tag>"}, f"{doc} runs the updater from {refs}, not {version}")
+                self.assertTrue(set(refs) <= {version, "<tag>"}, f"{doc} runs a script from {refs}, not {version}")
 
 
 class JsonMergeTests(unittest.TestCase):

@@ -25,13 +25,35 @@ becoming two status boards that disagree.
 
 ## Quick start
 
+With the newest [release](https://github.com/chhudson/bmad-beads-template/releases) tag for `<tag>`:
+
 ```bash
-gh repo create my-project --template chhudson/bmad-beads-template --private --clone
+uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/<tag>/scripts/new_project.py my-project
 cd my-project
-bash scripts/bootstrap.sh         # installs BMAD + beads, wires hooks, runs doctor
 git add -A && git commit -m "bootstrap BMAD×beads"
-git push && bd dolt push          # the code, then the beads database (to refs/dolt/data)
+git push && bd dolt push          # on GitHub: the code, then the beads database (to refs/dolt/data)
 ```
+
+`new_project.py` asks where the project goes, and you choose with the arrow keys: your GitHub
+account, one of your organizations, or local only, with no GitHub repo. Then it creates a private
+repo from the template, clones it into `./my-project`, and runs `scripts/bootstrap.sh` there, which
+installs BMAD and beads, wires the hooks and runs doctor. Nothing is committed or pushed.
+
+An organization in the list carries a note when its settings matter for a new repo: when every
+member can read or push to it (the org's base permission), or when members can't create private
+repos there. Pending invitations aren't listed.
+
+- `my-org/my-project`, `--owner my-org` or `--local` answers the question up front. With no
+  terminal to choose in, such as in CI, the script lists the owners it found and stops.
+- `--dry-run` prints the commands instead of running them; `--no-bootstrap` stops after the clone.
+- Anything after `--` goes to bootstrap: `new_project.py my-project -- --no-metrics`.
+- In Claude Code's auto mode, type the line with a leading `!`.
+
+By hand, the GitHub part is
+`gh repo create <owner>/my-project --template chhudson/bmad-beads-template --private --clone`, then
+`bash scripts/bootstrap.sh` in the clone. Leave out `<owner>/` and the repo goes to your own
+account. `gh repo create` with no arguments does show an owner list, but then offers only templates
+that owner has, so it can't make a repo in an organization from this one.
 
 The first bootstrap removes the template's `LICENSE` (MIT, with the template author's copyright
 line). Add your project's own if it needs one; the updater never touches `LICENSE`.
@@ -44,7 +66,8 @@ Someone joining the project clones it and runs `bash scripts/bootstrap.sh` too. 
 fetches the beads database with `bd bootstrap` instead of creating one, so it needs that first
 `bd dolt push`: until then it stops and says so.
 
-Prerequisites: git, Node ≥ 20.12, [uv](https://docs.astral.sh/uv/), and [Task](https://taskfile.dev)
+Prerequisites: git, Node ≥ 20.12, [uv](https://docs.astral.sh/uv/), the
+[GitHub CLI](https://cli.github.com) (`gh`, logged in) for a project on GitHub, and [Task](https://taskfile.dev)
 for the `task …` shortcuts (optional: each task wraps one command you can run directly). `bd` is
 installed by the bootstrap if missing (`npm i -g @beads/bd` or `brew install beads`).
 
@@ -57,8 +80,9 @@ bd mol pour bmad-planning --var initiative="my thing"   # optional: planning ste
 
 ### Keeping a project off GitHub
 
-`gh repo create --template` makes a GitHub repo. For a project that should stay on your machine,
-for example because it holds client data, copy the template and drop its history instead:
+For a project that should stay on your machine, for example because it holds client data, choose
+"Local only" in `new_project.py`, or pass `--local`. It copies the template without its history
+and bootstraps with `--local-only`. By hand, that's:
 
 ```bash
 git clone --depth 1 https://github.com/chhudson/bmad-beads-template my-project
@@ -191,6 +215,7 @@ _bmad/custom/*.toml            BMAD overrides: dependency convention, claim-on-s
 .beads/formulas/bmad-planning.formula.toml   planning phases as a beads molecule
 scripts/bmad_beads.py          the bridge: import | sync | claim | status | doctor  (stdlib only)
 scripts/test_bmad_beads.py     bridge tests: parser, sprint-status editor, import/sync/claim against a fake bd
+scripts/new_project.py         start a project: choose its owner (account, org, or local only), create, clone, bootstrap
 scripts/bootstrap.sh           idempotent setup (BMAD_VERSION / BD_VERSION pin the pair)
 scripts/canary.py              one story lifecycle against the installed BMAD + bd (weekly in CI)
 scripts/update_from_template.py   three-way merge of a newer template release into a project
