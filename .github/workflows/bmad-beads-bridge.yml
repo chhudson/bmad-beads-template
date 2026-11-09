@@ -1,4 +1,5 @@
-# Tests the BMAD×beads BRIDGE only (scripts/bmad_beads.py, update_from_template.py, their tests).
+# Tests the BMAD×beads BRIDGE only (scripts/bmad_beads.py, update_from_template.py, new_project.py,
+# their tests).
 # It says nothing about your project's own code: a green check here proves only
 # that scripts/** still passes. Add your project's own workflow beside this one —
 # nothing in this file will run code outside scripts/.
@@ -26,6 +27,7 @@ jobs:
       # BMAD silently skips an override with a syntax error.
       - run: uv run scripts/test_bmad_beads.py
       - run: uv run scripts/test_update_from_template.py
+      - run: uv run scripts/test_new_project.py
       - run: uv run scripts/bmad_beads.py --help >/dev/null
       # Pyflakes + syntax errors only, on a pinned ruff, so a new ruff default can't fail the build.
       - run: uvx ruff@0.16.8 check --isolated --select E9,F scripts/

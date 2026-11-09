@@ -18,6 +18,12 @@ leading `!` in the prompt, then run `/update-template` to resolve conflicts and 
 It merges each file with the project's own changes, leaves conflicts untouched for review, and prints
 the steps below for every release it crosses. See the README section "Updating from the template".
 
+## Unreleased
+
+- Nothing to do. `scripts/new_project.py` is new: it starts a project from the template and asks
+  which GitHub account or organization it goes in, or local only (#73). The updater adds it, with
+  its tests, to existing projects too, where it can start the next one.
+
 ## v0.4.1
 
 - Updater fix only; nothing to do (#69). A project made from `main` after a release, which had

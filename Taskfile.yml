@@ -27,10 +27,11 @@ tasks:
     cmds: [uv run --quiet scripts/bmad_beads.py doctor]
 
   test:
-    desc: Bridge tests (parser, sprint-status editor, and import/sync/claim against a fake bd) + updater tests
+    desc: Bridge tests (parser, sprint-status editor, and import/sync/claim against a fake bd) + updater and new-project tests
     cmds:
       - uv run --quiet scripts/test_bmad_beads.py
       - uv run --quiet scripts/test_update_from_template.py
+      - uv run --quiet scripts/test_new_project.py
 
   canary:
     desc: 'Bridge × installed BMAD/bd end to end. Writes beads: throwaway clones only'
