@@ -350,10 +350,12 @@ class RunTests(unittest.TestCase):
         self.assertFalse((self.work / "proj").exists())
 
     def test_stray_argument_refused(self):
-        code, _, err = self.main("proj", "--local", "extra")
-        self.assertEqual(code, 2)
-        self.assertIn("after --", err)
-        self.assertFalse((self.work / "proj").exists())
+        for stray in ("extra", "--no-metrics"):  # a bootstrap flag without the -- in front of it
+            with self.subTest(stray):
+                code, _, err = self.main("proj", "--local", stray)
+                self.assertEqual(code, 2)
+                self.assertIn("after --", err)
+                self.assertFalse((self.work / "proj").exists())
 
     def test_owner_twice_refused(self):
         code, _, _ = self.main("acme/proj", "--owner", "zeta")

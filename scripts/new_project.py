@@ -276,10 +276,15 @@ def run(steps: list[Step], owner: str | None, name: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    # Split at -- by hand. In older patch releases (3.11.9, and 3.12.3, which ubuntu-latest runs) a
+    # nargs="*" positional after NAME is matched, empty, along with NAME, and argparse then rejects
+    # whatever follows the -- as unrecognized.
+    cut = argv.index("--") if "--" in argv else len(argv)
+    argv, bootstrap_args = argv[:cut], argv[cut + 1:]
     p = argparse.ArgumentParser(prog="new_project", description=__doc__,
+                                usage="%(prog)s [options] [OWNER/]NAME [-- BOOTSTRAP_ARG ...]",
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("target", metavar="[OWNER/]NAME", help="the new repo and folder; with OWNER/ there is no picker")
-    p.add_argument("bootstrap_args", nargs="*", metavar="-- BOOTSTRAP_ARG", help="passed on to scripts/bootstrap.sh")
     where = p.add_mutually_exclusive_group()
     where.add_argument("--owner", help="GitHub account or organization to create the repo in (no picker)")
     where.add_argument("--local", action="store_true",
@@ -288,11 +293,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--template", default=DEFAULT_TEMPLATE, help=f"template repo, OWNER/REPO (default: {DEFAULT_TEMPLATE})")
     p.add_argument("--no-bootstrap", action="store_true", help="create and clone only; run scripts/bootstrap.sh yourself")
     p.add_argument("--dry-run", action="store_true", help="print the commands instead of running them")
-    args = p.parse_args(argv)
+    args, extra = p.parse_known_args(argv)
 
     try:
-        if args.bootstrap_args and "--" not in argv:
-            raise Abort(f"unexpected {' '.join(args.bootstrap_args)!r}: arguments for bootstrap go after --", 2)
+        if extra:
+            raise Abort(f"unexpected {' '.join(extra)!r}: arguments for bootstrap go after --", 2)
         owner, name = parse_target(args.target)
         if owner and (args.owner or args.local):
             raise Abort(f"{args.target!r} names the owner already: drop --owner / --local", 2)
@@ -307,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
             if chosen is None:
                 raise Abort("cancelled: nothing was created")
             owner = chosen.owner
-        bootstrap = None if args.no_bootstrap else list(args.bootstrap_args)
+        bootstrap = None if args.no_bootstrap else bootstrap_args
         steps = plan(owner, name, args.template, args.visibility, bootstrap)
         where_to = (f"./{name}, local only: no GitHub repo, and beads stays on this machine" if owner is None
                     else f"github.com/{owner}/{name} ({args.visibility}), cloned to ./{name}")
