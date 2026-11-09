@@ -9,7 +9,7 @@ uv run scripts/update_from_template.py            # or /update-template in Claud
 Projects made before v0.3.0 don't have the script yet. Run it straight from the template:
 
 ```bash
-uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.4.1/scripts/update_from_template.py
+uv run https://raw.githubusercontent.com/chhudson/bmad-beads-template/v0.5.0/scripts/update_from_template.py
 ```
 
 If Claude Code's auto mode blocks that ("Code from External"), run it yourself by typing it with a
@@ -18,7 +18,7 @@ leading `!` in the prompt, then run `/update-template` to resolve conflicts and 
 It merges each file with the project's own changes, leaves conflicts untouched for review, and prints
 the steps below for every release it crosses. See the README section "Updating from the template".
 
-## Unreleased
+## v0.5.0
 
 - Nothing to do. `scripts/new_project.py` is new: it starts a project from the template and asks
   which GitHub account or organization it goes in, or local only (#73). The updater adds it, with
